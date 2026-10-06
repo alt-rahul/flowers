@@ -1,0 +1,5 @@
+__pycache__/
+.pytest_cache/
+# Raw experiment CSVs are committed gzipped (analyze.py reads .csv.gz).
+results/*.csv
+!results/**/summary.csv
