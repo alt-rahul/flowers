@@ -230,31 +230,36 @@ def plot_success(path, bots, qs, stats, conditional=False):
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
     fig.patch.set_facecolor(SURFACE)
+    key, ci = ("rate_given_winnable", "ci_given_winnable") if conditional else ("rate", "ci")
     if not conditional:
         o = [next(stats[(b, q)] for b in bots if (b, q) in stats) for q in qs]
         ax.plot(qs, [s["oracle_rate"] for s in o], color=REFERENCE, linewidth=1.5,
-                linestyle=(0, (4, 3)), label="Clairvoyant bound", zorder=2)
+                linestyle=(0, (4, 3)), label="Clairvoyant bound", zorder=4)
+    # The bots' curves sit close together, so overlapping CI bands would blur
+    # into one; the widest half-width goes in the subtitle instead and the
+    # paired-difference chart shows which gaps are real.
+    half = max((s[ci][1] - s[ci][0]) / 2 for s in stats.values() if not math.isnan(s[ci][0]))
+    lowest = 1.0
     for i, b in enumerate(bots):
         pts = [stats[(b, q)] for q in qs if (b, q) in stats]
-        x = [s["q"] for s in pts]
-        key, ci = ("rate_given_winnable", "ci_given_winnable") if conditional else ("rate", "ci")
         y = [s[key] for s in pts]
-        lo = [s[ci][0] for s in pts]
-        hi = [s[ci][1] for s in pts]
-        color = COLORS[i % len(COLORS)]
-        ax.fill_between(x, lo, hi, color=color, alpha=0.12, linewidth=0, zorder=1)
-        ax.plot(x, y, color=color, linewidth=2, solid_capstyle="round", zorder=3,
-                marker=MARKERS[i % len(MARKERS)], markersize=5, markeredgecolor=SURFACE,
-                markeredgewidth=1.2, label=bot_label(b))
+        lowest = min(lowest, min(y))
+        ax.plot([s["q"] for s in pts], y, color=COLORS[i % len(COLORS)], linewidth=2,
+                solid_capstyle="round", zorder=3, marker=MARKERS[i % len(MARKERS)],
+                markersize=5, markeredgecolor=SURFACE, markeredgewidth=1.2,
+                label=bot_label(b))
     ax.set_xlim(min(qs), max(qs))
-    ax.set_ylim(0, 1.02)
     if conditional:
+        ax.set_ylim(math.floor((lowest - 0.01) * 50) / 50, 1.005)
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         _style(ax, "Success on winnable trials",
-               "Share of trials won, counting only those a clairvoyant bot could win. "
-               "Bands: 95% CI.", "Success rate")
+               "Only trials a clairvoyant bot could win. The y-axis starts above zero. "
+               f"95% CIs within ±{half:.1%}.", "Success rate")
     else:
+        ax.set_ylim(0, 1.02)
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         _style(ax, "Success rate by flammability",
-               "Share of trials where the bot pressed the button. Bands: 95% CI.",
+               f"Share of trials where the bot pressed the button. 95% CIs within ±{half:.1%}.",
                "Success rate")
     _legend(ax, loc="lower left")
     fig.tight_layout()
@@ -347,11 +352,14 @@ def main() -> None:
     parser.add_argument("--out", default="results")
     parser.add_argument("--no-plots", action="store_true")
     parser.add_argument("--base", help="bot the others are compared with (default: last)")
+    parser.add_argument("--D", type=int, help="only use trials on ships of this size")
     parser.add_argument("--failure-q", default="0.2:0.6",
                         help="q range pooled in the failure chart (default 0.2:0.6)")
     args = parser.parse_args()
 
     rows = load(args.csv)
+    if args.D is not None:
+        rows = [r for r in rows if r["D"] == args.D]
     bots, qs, stats = summarize(rows)
     os.makedirs(args.out, exist_ok=True)
     write_summary_csv(os.path.join(args.out, "summary.csv"), bots, qs, stats)
