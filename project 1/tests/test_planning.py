@@ -7,7 +7,8 @@ import pytest
 from math import comb
 
 from forecast import FORECASTS, FireForecast
-from planning import bfs_path, risk_astar, with_neighbors
+from planners import danger_radius, fire_arrival_probability
+from planning import astar_path, bfs_path, manhattan_distances, risk_astar, with_neighbors
 from ship import Ship
 
 
@@ -158,3 +159,90 @@ def test_forecast_probabilities_are_valid_and_grow(kind):
         assert (p >= prev - 1e-12).all()
         assert (p[~ship.open_flat] == 0).all()
         prev = p
+
+
+# ------------------------------------------------- A* and Bot 4's race model --
+
+@pytest.mark.parametrize("seed", range(10))
+def test_astar_with_unit_costs_finds_shortest_paths(seed):
+    rng = np.random.default_rng(seed)
+    ship = Ship.generate(20, rng)
+    start, goal = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
+    path = astar_path(ship.neighbors, start, goal, [1.0] * ship.D ** 2,
+                      manhattan_distances(ship.D, goal))
+    assert_valid_path(ship, path, start, goal)
+    assert len(path) - 1 == ship.distances_from(start)[goal]
+
+
+def dijkstra_cost(ship, start, goal, step_cost):
+    """Cheapest cost by plain Dijkstra (no heuristic), for comparison."""
+    best = {start: 0.0}
+    heap = [(0.0, start)]
+    while heap:
+        g, cell = heapq.heappop(heap)
+        if cell == goal:
+            return g
+        if g > best[cell]:
+            continue
+        for n in ship.neighbors[cell]:
+            if step_cost[n] == math.inf:
+                continue
+            if g + step_cost[n] < best.get(n, math.inf):
+                best[n] = g + step_cost[n]
+                heapq.heappush(heap, (best[n], n))
+    return None
+
+
+@pytest.mark.parametrize("seed", range(10))
+def test_astar_finds_the_cheapest_path(seed):
+    rng = np.random.default_rng(seed)
+    ship = Ship.generate(20, rng)
+    start, goal = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
+    # Costs like Bot 4's: mostly 1, some cells 21, a few impassable.
+    roll = rng.random(ship.D ** 2)
+    step_cost = [math.inf if r < 0.05 else 21.0 if r < 0.3 else 1.0 for r in roll]
+    step_cost[goal] = 1.0
+    path = astar_path(ship.neighbors, start, goal, step_cost, manhattan_distances(ship.D, goal))
+    expected = dijkstra_cost(ship, start, goal, step_cost)
+    if expected is None:
+        assert path is None
+    else:
+        assert_valid_path(ship, path, start, goal)
+        assert sum(step_cost[c] for c in path[1:]) == pytest.approx(expected)
+
+
+def test_manhattan_never_overestimates():
+    rng = np.random.default_rng(1)
+    ship = Ship.generate(20, rng)
+    goal = int(ship.open_cells[0])
+    h = manhattan_distances(ship.D, goal)
+    dist = ship.distances_from(goal)
+    assert all(h[c] <= dist[c] for c in ship.open_cells)
+
+
+@pytest.mark.parametrize("q", [0.1, 0.3, 0.7])
+@pytest.mark.parametrize("threshold", [0.3, 0.6, 0.9])
+def test_danger_radius_matches_the_binomial_formula(q, threshold):
+    radius = danger_radius(q, threshold, 40)
+    for k in range(41):
+        for d in range(1, k + 2):
+            p = fire_arrival_probability(k, d, q)
+            if abs(p - threshold) > 1e-9:          # skip exact ties
+                assert (d <= radius[k]) == (p > threshold)
+
+
+def test_race_model_is_exact_on_a_corridor():
+    # Along a corridor the fire really does advance one cell per step with
+    # probability q, so the race model matches the (exact) message-passing
+    # forecast there.
+    q, n = 0.3, 12
+    grid = np.zeros((n, n), dtype=bool)
+    grid[0, :] = True
+    ship = Ship(grid)
+    burning = np.zeros(n * n, dtype=bool)
+    burning[0] = True
+    forecast = FORECASTS["dmp"](ship, q, burning)
+    for k in (1, 4, 10, 20):
+        p = forecast.prob_at(k)
+        for d in range(1, n):
+            assert fire_arrival_probability(k, d, q) == pytest.approx(p[d], abs=1e-9)

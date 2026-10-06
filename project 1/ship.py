@@ -18,8 +18,6 @@ HOW A SHIP IS STORED
 """
 # Lets type hints like `list[int] | None` work on older Python versions.
 # Type hints are documentation only: Python does not enforce them.
-from __future__ import annotations
-
 from collections import deque     # double-ended queue, like std::deque (BFS frontier)
 from functools import lru_cache   # memoization decorator: caches a function's results
 
@@ -30,7 +28,7 @@ import numpy as np
 # calls with the same D return the cached result instantly. Every ship of
 # size D has the same grid geometry, so this is computed once per D.
 @lru_cache(maxsize=None)
-def grid_neighbors(D: int) -> tuple[tuple[int, ...], ...]:
+def grid_neighbors(D):
     """For every cell (by flat index), the flat indices of its up/down/left/
     right neighbours that are inside the grid. Walls are ignored here; this is
     pure geometry. Returned as tuples (immutable) so the cached copy can't be
@@ -51,7 +49,7 @@ def grid_neighbors(D: int) -> tuple[tuple[int, ...], ...]:
     return tuple(nbrs)
 
 
-def count_neighbors(mask: np.ndarray) -> np.ndarray:
+def count_neighbors(mask):
     """Given a 2D boolean mask (e.g. "is open" or "is burning"), return a 2D
     array counting how many of each cell's 4 neighbours are True.
 
@@ -71,14 +69,14 @@ def count_neighbors(mask: np.ndarray) -> np.ndarray:
     return count
 
 
-def dead_ends(grid: np.ndarray) -> np.ndarray:
+def dead_ends(grid):
     """Flat indices of all dead ends: open cells with exactly one open
     neighbour. `&` is element-wise AND on boolean arrays, and
     np.flatnonzero returns the flat indices of the True entries."""
     return np.flatnonzero(grid & (count_neighbors(grid) == 1))
 
 
-def generate_layout(D: int, rng: np.random.Generator) -> np.ndarray:
+def generate_layout(D, rng):
     """Generate a D x D layout following the project's procedure: grow a maze
     (phase 1), then knock out about half of its dead ends (phase 2).
 
@@ -87,7 +85,7 @@ def generate_layout(D: int, rng: np.random.Generator) -> np.ndarray:
     return reduce_dead_ends(grow_maze(D, rng), rng)
 
 
-def grow_maze(D: int, rng: np.random.Generator) -> np.ndarray:
+def grow_maze(D, rng):
     """Phase 1 of the spec: open a random interior cell, then repeatedly open
     a random blocked cell that has exactly one open neighbour, until no such
     cell is left.
@@ -108,17 +106,17 @@ def grow_maze(D: int, rng: np.random.Generator) -> np.ndarray:
     nbrs = grid_neighbors(D)
     is_open = [False] * (D * D)     # Python list of D*D False values
     open_count = [0] * (D * D)      # open_count[i] = number of open neighbours of i
-    candidates: list[int] = []      # blocked cells with exactly one open neighbour
-    where: dict[int, int] = {}      # cell -> its position in `candidates` (like std::unordered_map)
+    candidates = []   # blocked cells with exactly one open neighbour
+    where = {}        # cell -> its position in `candidates` (like std::unordered_map)
 
     # Small helper functions defined inside grow_maze. They can read and
     # modify the lists above (Python closures), like C++ lambdas capturing
     # by reference.
-    def add(cell: int) -> None:
+    def add(cell):
         where[cell] = len(candidates)
         candidates.append(cell)
 
-    def remove(cell: int) -> None:
+    def remove(cell):
         # O(1) removal from the middle of a vector: move the last element
         # into the hole, then pop the last slot. Order doesn't matter because
         # we always pick a random candidate anyway.
@@ -128,7 +126,7 @@ def grow_maze(D: int, rng: np.random.Generator) -> np.ndarray:
             candidates[i] = last     # ...fill its hole with the old last element
             where[last] = i
 
-    def open_cell(cell: int) -> None:
+    def open_cell(cell):
         is_open[cell] = True
         if cell in where:            # it was a candidate; it isn't any more
             remove(cell)
@@ -150,7 +148,7 @@ def grow_maze(D: int, rng: np.random.Generator) -> np.ndarray:
     return np.array(is_open, dtype=bool).reshape(D, D)
 
 
-def reduce_dead_ends(grid: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def reduce_dead_ends(grid, rng):
     """Phase 2 of the spec: pick a random dead end, open one of its blocked
     neighbours at random, and repeat until at most half of the original dead
     ends are left. This adds loops to the maze, so there are often several
@@ -179,7 +177,7 @@ class Ship:
     """A finished ship layout plus the lookup structures the rest of the code
     needs. Build one with `Ship.generate(D, rng)`."""
 
-    def __init__(self, grid: np.ndarray):
+    def __init__(self, grid):
         # `self` is Python's explicit version of C++'s `this`.
         self.grid = np.asarray(grid, dtype=bool)
         if self.grid.ndim != 2 or self.grid.shape[0] != self.grid.shape[1]:
@@ -190,30 +188,30 @@ class Ship:
         is_open = self.open_flat.tolist()  # plain Python list: faster to index in loops
         # Adjacency list: neighbors[i] = open neighbours of cell i, or [] if i
         # is blocked. Like a std::vector<std::vector<int>>.
-        self.neighbors: list[list[int]] = [
+        self.neighbors = [
             [n for n in nbrs if is_open[n]] if is_open[i] else []
             for i, nbrs in enumerate(grid_neighbors(self.D))   # enumerate gives (index, item)
         ]
 
     # A classmethod is a static factory: Ship.generate(50, rng) returns a new Ship.
     @classmethod
-    def generate(cls, D: int, rng: np.random.Generator) -> "Ship":
+    def generate(cls, D, rng):
         return cls(generate_layout(D, rng))
 
     # @property lets you write ship.n_open (no parentheses) for a computed value.
     @property
-    def n_open(self) -> int:
+    def n_open(self):
         return len(self.open_cells)
 
-    def coords(self, cell: int) -> tuple[int, int]:
+    def coords(self, cell):
         """Flat index -> (row, col). divmod returns (quotient, remainder)."""
         return divmod(cell, self.D)
 
-    def index(self, r: int, c: int) -> int:
+    def index(self, r, c):
         """(row, col) -> flat index."""
         return r * self.D + c
 
-    def distances_from(self, source: int) -> list[float]:
+    def distances_from(self, source):
         """Breadth-first search (BFS) from `source`: the number of moves to
         reach every cell through open cells (inf for blocked or unreachable
         cells). BFS explores cells in order of distance, so the first time a
@@ -233,7 +231,7 @@ class Ship:
                     frontier.append(n)
         return dist
 
-    def render(self, marks: dict[int, str] | None = None) -> str:
+    def render(self, marks=None):
         """ASCII picture for debugging: '#' blocked, '.' open, plus any
         single-character marks, e.g. {bot_cell: 'B', button: 'X'}."""
         marks = marks or {}       # `or` gives {} when marks is None
@@ -247,6 +245,6 @@ class Ship:
             rows.append("".join(row))
         return "\n".join(rows)
 
-    def __str__(self) -> str:
+    def __str__(self):
         """Called by print(ship), like overloading operator<< in C++."""
         return self.render()

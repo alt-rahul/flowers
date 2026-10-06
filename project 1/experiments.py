@@ -16,8 +16,6 @@ Examples:
     python experiments.py --D 50 --q 0.3,0.4 --trials 500 \
         --bots bot3 bot4:risk_weight=3 bot4:risk_weight=30 --out results/tune.csv
 """
-from __future__ import annotations
-
 import argparse
 import csv
 import os
@@ -34,7 +32,7 @@ FIELDS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", 
           "bot_to_button", "fire_to_button", "fire_to_bot"]
 
 
-def parse_qs(text: str) -> list[float]:
+def parse_qs(text):
     """Either "start:stop:step" (stop included) or a comma-separated list."""
     if ":" in text:
         start, stop, step = (float(x) for x in text.split(":"))
@@ -43,13 +41,13 @@ def parse_qs(text: str) -> list[float]:
     return [float(x) for x in text.split(",")]
 
 
-def trial_rng(seed: int, q: float, i: int) -> np.random.Generator:
+def trial_rng(seed, q, i):
     # Keyed by (seed, q, trial index) so results don't depend on how the work
     # is split between processes, and runs can be extended reproducibly.
     return np.random.default_rng([seed, int(round(q * 1_000_000)), i])
 
 
-def run_chunk(job) -> list[dict]:
+def run_chunk(job):
     D, q, seed, indices, specs = job
     rows = []
     for i in indices:
@@ -75,7 +73,7 @@ def run_chunk(job) -> list[dict]:
     return rows
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--D", type=int, default=50, help="ship size (default 50)")

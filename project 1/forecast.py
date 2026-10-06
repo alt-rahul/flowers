@@ -8,11 +8,7 @@ MessagePassingForecast is the one Bot 4 uses. MeanFieldForecast is the
 simpler first attempt, kept for comparison: forecast_check.py shows it is far
 too pessimistic on these ships, and the README explains why.
 """
-from __future__ import annotations
-
 import numpy as np
-
-from ship import Ship
 
 # Floor on the forecast chance that a cell is NOT burning, so -log stays
 # finite. Only cells burning right now get infinite risk.
@@ -23,13 +19,13 @@ class _Forecast:
     """Shared lazy layer cache. Subclasses implement _advance() and keep
     self._safe, a flat array of 1 - p_t for the latest t."""
 
-    def __init__(self, q: float, burning: np.ndarray):
+    def __init__(self, q, burning):
         self.q = q
         self._burning_now = np.where(burning, np.inf, 0.0)
         self._static = q == 0.0  # with q = 0 the fire never moves
-        self._risk: list[np.ndarray] = []
+        self._risk = []
 
-    def risk_at(self, t: int) -> np.ndarray:
+    def risk_at(self, t):
         """Flat array of -log(1 - p_t): the risk cost of being in each cell at
         time t (inf for cells that are already burning). Layers are computed
         lazily, so the planner only pays for the time steps it reaches."""
@@ -40,16 +36,16 @@ class _Forecast:
             self._push_layer()
         return self._risk[t]
 
-    def prob_at(self, t: int) -> np.ndarray:
+    def prob_at(self, t):
         """p_t as a flat array (for analysis and tests, not used in planning)."""
         return -np.expm1(-self.risk_at(t))
 
-    def _push_layer(self) -> None:
+    def _push_layer(self):
         risk = -np.log(np.maximum(self._safe, MIN_SAFE))
         risk += self._burning_now
         self._risk.append(risk)
 
-    def _advance(self) -> None:
+    def _advance(self):
         raise NotImplementedError
 
 
@@ -70,7 +66,7 @@ class MeanFieldForecast(_Forecast):
     fast the fire spreads.
     """
 
-    def __init__(self, ship: Ship, q: float, burning: np.ndarray):
+    def __init__(self, ship, q, burning):
         super().__init__(q, burning)
         D = ship.D
         self._open = ship.grid
@@ -81,7 +77,7 @@ class MeanFieldForecast(_Forecast):
         self._safe = self._safe2d.ravel()
         self._push_layer()
 
-    def _advance(self) -> None:
+    def _advance(self):
         pad = self._pad
         inner = pad[1:-1, 1:-1]
         np.multiply(self._safe2d, self.q, out=inner)
@@ -97,7 +93,7 @@ class EdgeIndex:
     """Directed edges between open cells, arranged for vectorised message
     passing. Depends only on the layout, so it is built once per ship."""
 
-    def __init__(self, ship: Ship):
+    def __init__(self, ship):
         src, dst = [], []
         for i in ship.open_cells.tolist():
             for k in ship.neighbors[i]:
@@ -124,7 +120,7 @@ class EdgeIndex:
         self.cavity = tuple(cavity.T.copy())
 
     @classmethod
-    def of(cls, ship: Ship) -> "EdgeIndex":
+    def of(cls, ship):
         if getattr(ship, "_edge_index", None) is None:
             ship._edge_index = cls(ship)
         return ship._edge_index
@@ -158,7 +154,7 @@ class MessagePassingForecast(_Forecast):
     decreases over time, which the pruning in planning.risk_astar relies on.
     """
 
-    def __init__(self, ship: Ship, q: float, burning: np.ndarray):
+    def __init__(self, ship, q, burning):
         super().__init__(q, burning)
         self._edges = EdgeIndex.of(ship)
         E = self._edges.E
@@ -170,7 +166,7 @@ class MessagePassingForecast(_Forecast):
         self._safe = self._safe0
         self._push_layer()
 
-    def _advance(self) -> None:
+    def _advance(self):
         edges, q = self._edges, self.q
         theta = self._theta
         theta[:-1] -= q * self._phi

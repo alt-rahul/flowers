@@ -6,8 +6,6 @@
 Writes summary.csv (one row per bot and q), summary.md (tables for the
 writeup) and, unless --no-plots, PNG charts.
 """
-from __future__ import annotations
-
 import argparse
 import csv
 import gzip
@@ -37,14 +35,14 @@ INK = "#0b0b0b"
 INK_2 = "#52514e"
 
 
-def bot_label(spec: str) -> str:
+def bot_label(spec):
     """'bot4:risk_weight=10' -> 'Bot 4 (risk_weight=10)'."""
     name, _, args = spec.partition(":")
     label = f"Bot {name[3:]}" if name.startswith("bot") else name
     return f"{label} ({args})" if args else label
 
 
-def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+def wilson(k, n, z=1.96):
     """95% Wilson score interval for a binomial proportion."""
     if n == 0:
         return (math.nan, math.nan)
@@ -54,7 +52,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     return (centre - half, centre + half)
 
 
-def load(paths: list[str]) -> list[dict]:
+def load(paths):
     rows = []
     for path in paths:
         opener = gzip.open if path.endswith(".gz") else open
@@ -74,7 +72,7 @@ def load(paths: list[str]) -> list[dict]:
     return rows
 
 
-def summarize(rows: list[dict]) -> tuple[list[str], list[float], dict]:
+def summarize(rows):
     bots = list(dict.fromkeys(r["bot"] for r in rows))
     qs = sorted({r["q"] for r in rows})
     groups = defaultdict(list)
@@ -102,7 +100,7 @@ def summarize(rows: list[dict]) -> tuple[list[str], list[float], dict]:
     return bots, qs, stats
 
 
-def paired_difference(rows: list[dict], a: str, b: str) -> dict[float, tuple[float, float, int]]:
+def paired_difference(rows, a, b):
     """Mean of success(a) - success(b) over shared trials, with a 95% CI
     half-width, per q. Pairing on the same trials removes most of the noise."""
     by_trial = defaultdict(dict)
@@ -120,11 +118,11 @@ def paired_difference(rows: list[dict], a: str, b: str) -> dict[float, tuple[flo
     return out
 
 
-def has_diagnostics(rows: list[dict]) -> bool:
+def has_diagnostics(rows):
     return all(r["fireproof"] is not None and r["deviations"] is not None for r in rows)
 
 
-def trial_types(rows: list[dict], qs: list[float]) -> dict[float, tuple[float, float, float, int]]:
+def trial_types(rows, qs):
     """Per q, the shares of trials that are a certain win from the start
     (a fireproof path exists), contested (winnable, but only by deciding
     well), and impossible (not even a clairvoyant bot wins)."""
@@ -139,7 +137,7 @@ def trial_types(rows: list[dict], qs: list[float]) -> dict[float, tuple[float, f
     return out
 
 
-def contested_stats(rows: list[dict], bots: list[str], qs: list[float]) -> dict:
+def contested_stats(rows, bots, qs):
     """Success rate (with 95% CI) on contested trials only, per (bot, q)."""
     out = {}
     for b in bots:
@@ -152,7 +150,7 @@ def contested_stats(rows: list[dict], bots: list[str], qs: list[float]) -> dict:
     return out
 
 
-def divergence(rows: list[dict], bots: list[str], qs: list[float]) -> dict:
+def divergence(rows, bots, qs):
     """Share of trials in which each bot makes at least one move that Bot 2's
     rule (step along a shortest fire-free path) could not have made."""
     out = {}
@@ -165,7 +163,7 @@ def divergence(rows: list[dict], bots: list[str], qs: list[float]) -> dict:
     return out
 
 
-def divergence_outcomes(rows: list[dict], bot: str, base: str = "bot2") -> dict:
+def divergence_outcomes(rows, bot, base="bot2"):
     """Pooled over q: outcomes of `bot` vs `base` on the same trials, split
     by whether `bot` ever left Bot 2's rule."""
     by = defaultdict(dict)
@@ -178,7 +176,7 @@ def divergence_outcomes(rows: list[dict], bot: str, base: str = "bot2") -> dict:
     return out
 
 
-def write_summary_csv(path: str, bots, qs, stats) -> None:
+def write_summary_csv(path, bots, qs, stats):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["bot", "q", "trials", "success_rate", "ci_low", "ci_high",
@@ -196,7 +194,7 @@ def write_summary_csv(path: str, bots, qs, stats) -> None:
                            + [s["avoidable"][r] for r in REASONS])
 
 
-def markdown_tables(rows, bots, qs, stats, base=None) -> str:
+def markdown_tables(rows, bots, qs, stats, base=None):
     lines = []
     D = sorted({r["D"] for r in rows})
     n = sorted({s["n"] for s in stats.values()})
@@ -272,7 +270,7 @@ def markdown_tables(rows, bots, qs, stats, base=None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def diagnostic_tables(rows, bots, qs) -> str:
+def diagnostic_tables(rows, bots, qs):
     lines = []
     types = trial_types(rows, qs)
     lines.append("\n### Trial types: certain from the start, contested, or impossible\n")
@@ -616,7 +614,7 @@ def plot_failures(path, bots, qs, stats):
     plt.close(fig)
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("csv", nargs="+")

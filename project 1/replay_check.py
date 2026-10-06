@@ -10,8 +10,6 @@ genuinely worse.
 
     python replay_check.py results/main.csv.gz --lost bot4 --won bot3 --fires 40
 """
-from __future__ import annotations
-
 import argparse
 import os
 from collections import defaultdict
@@ -37,7 +35,7 @@ def replay(job):
     return q, trial, {b: w / fires for b, w in wins.items()}
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("csv", nargs="+")

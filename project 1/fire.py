@@ -1,22 +1,19 @@
 """The fire: one random realisation per trial, plus the spread rule itself."""
-from __future__ import annotations
-
 import numpy as np
 
-from ship import Ship, count_neighbors
+from ship import count_neighbors
 
 # Ignition time for cells that have not caught fire (yet).
 NOT_YET = np.iinfo(np.int64).max
 
 
-def spread_probabilities(q: float) -> np.ndarray:
+def spread_probabilities(q):
     """Lookup table: entry K is 1 - (1 - q)^K, the chance that a cell with K
     burning neighbours catches fire this step (K = 0..4)."""
     return 1.0 - (1.0 - q) ** np.arange(5)
 
 
-def fire_step(burning: np.ndarray, open_grid: np.ndarray, probs: np.ndarray,
-              rng: np.random.Generator) -> np.ndarray:
+def fire_step(burning, open_grid, probs, rng):
     """Return the mask of cells that ignite during one fire update.
 
     The update is synchronous: K is counted from `burning` as it was at the
@@ -41,7 +38,7 @@ class FireTrajectory:
     `burning_at(t)` for the current t, never the future.
     """
 
-    def __init__(self, ship: Ship, q: float, origin: int, rng: np.random.Generator):
+    def __init__(self, ship, q, origin, rng):
         self.ship = ship
         self.q = q
         self.rng = rng
@@ -52,18 +49,18 @@ class FireTrajectory:
         self.ignite_time[origin] = 0
         self.t = 0
 
-    def advance_to(self, t: int) -> None:
+    def advance_to(self, t):
         while self.t < t:
             new = fire_step(self.burning, self.ship.grid, self.probs, self.rng)
             self.burning |= new
             self.t += 1
             self.ignite_time[new.ravel()] = self.t
 
-    def burning_at(self, t: int) -> np.ndarray:
+    def burning_at(self, t):
         """Flat boolean mask of the cells burning after `t` fire updates."""
         self.advance_to(t)
         return self.ignite_time <= t
 
-    def is_burning(self, cell: int, t: int) -> bool:
+    def is_burning(self, cell, t):
         self.advance_to(t)
         return bool(self.ignite_time[cell] <= t)

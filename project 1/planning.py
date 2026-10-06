@@ -1,16 +1,20 @@
-"""Path planning shared by all bots: plain BFS and a risk-aware A*."""
-from __future__ import annotations
+"""Search algorithms shared by the bots' planners (see planners.py).
 
+    bfs_path         shortest path avoiding some cells (Bots 1, 2, 3)
+    astar_path       cheapest path when cells have different costs (Bot 4)
+    manhattan_distances  the A* heuristic used by Bot 4
+    bfs_distances    distance from one cell to every other, avoiding some cells
+    fire_distances   how soon the fire could possibly reach each cell
+    fireproof_path   a path the fire provably cannot catch (certain-win check)
+    with_neighbors   the fire plus every cell next to it (Bot 3's buffer)
+    risk_astar       the search used by the earlier, forecast-based Bot 4
+"""
 import heapq
 import math
 from collections import deque
-from typing import Callable, Sequence
-
-import numpy as np
 
 
-def bfs_path(neighbors: list[list[int]], start: int, goal: int,
-             blocked: Sequence[bool]) -> list[int] | None:
+def bfs_path(neighbors, start, goal, blocked):
     """Shortest path from `start` to `goal` (both included) that avoids every
     cell with blocked[cell] True. The start cell is never treated as blocked,
     since the bot is already standing on it. Returns None if no path exists.
@@ -39,8 +43,7 @@ def bfs_path(neighbors: list[list[int]], start: int, goal: int,
     return None
 
 
-def bfs_distances(neighbors: list[list[int]], source: int,
-                  blocked: Sequence[bool]) -> list[float]:
+def bfs_distances(neighbors, source, blocked):
     """Distance from `source` to every cell, avoiding blocked cells (inf if
     unreachable). The source itself is never treated as blocked."""
     dist = [math.inf] * len(blocked)
@@ -56,8 +59,7 @@ def bfs_distances(neighbors: list[list[int]], source: int,
     return dist
 
 
-def fire_distances(neighbors: list[list[int]], burning: Sequence[int],
-                   n_cells: int) -> list[float]:
+def fire_distances(neighbors, burning, n_cells):
     """Fewest fire updates needed to reach each cell from the cells burning
     now (multi-source BFS; inf if unreachable). The fire advances at most one
     cell per update, so a cell at distance d cannot be burning until at least
@@ -77,8 +79,7 @@ def fire_distances(neighbors: list[list[int]], burning: Sequence[int],
     return dist
 
 
-def fireproof_path(neighbors: list[list[int]], start: int, goal: int,
-                   fire_dist: Sequence[float]) -> list[int] | None:
+def fireproof_path(neighbors, start, goal, fire_dist):
     """Shortest path the fire cannot catch even if it spreads at every chance
     (as if q = 1), or None if there is no such path.
 
@@ -119,7 +120,7 @@ def fireproof_path(neighbors: list[list[int]], start: int, goal: int,
     return None
 
 
-def with_neighbors(mask: np.ndarray, D: int) -> np.ndarray:
+def with_neighbors(mask, D):
     """Flat mask of the cells in `mask` plus their up/down/left/right neighbours."""
     m = mask.reshape(D, D)
     out = m.copy()
@@ -130,10 +131,64 @@ def with_neighbors(mask: np.ndarray, D: int) -> np.ndarray:
     return out.ravel()
 
 
-def risk_astar(neighbors: list[list[int]], start: int, goal: int,
-               heuristic: Sequence[float], risk_at: Callable[[int], np.ndarray],
-               risk_weight: float) -> list[int] | None:
-    """A* over (cell, time) states where entering a cell costs
+def manhattan_distances(D, goal):
+    """|row - goal row| + |col - goal col| for every cell: the number of moves
+    from each cell to `goal` if there were no walls at all.
+
+    Walls can only make a route longer and every move costs at least 1, so
+    this never overestimates the real remaining cost. That makes it a valid
+    (admissible and consistent) A* heuristic."""
+    gr, gc = divmod(goal, D)
+    return [abs(r - gr) + abs(c - gc) for r in range(D) for c in range(D)]
+
+
+def astar_path(neighbors, start, goal, step_cost, heuristic):
+    """Cheapest path from `start` to `goal` (both included) with A*, where
+    entering cell c costs step_cost[c] (math.inf = impassable). Returns None if
+    every route is impassable.
+
+    A* always expands the cell with the smallest f = g + h, where g is the
+    cheapest known cost from the start and h = heuristic[cell] estimates the
+    cost still to go. As long as h never overestimates (and every step costs
+    at least as much as h can drop, which holds for Manhattan distance with
+    step costs >= 1), the first time the goal is taken off the heap its path
+    is the cheapest one. With h = 0 this is Dijkstra's algorithm, and with all
+    step costs equal to 1 it finds the same path lengths as BFS.
+    """
+    if start == goal:
+        return [start]
+    best = {start: 0.0}                 # cheapest known cost to reach each cell
+    parent = {}
+    done = set()              # cells whose cheapest cost is final
+    heap = [(heuristic[start], 0.0, start)]   # (f, g, cell); heapq pops the smallest
+    while heap:
+        _, g, cell = heapq.heappop(heap)
+        if cell in done:
+            continue                    # an outdated heap entry
+        if cell == goal:
+            path = [cell]
+            while cell != start:
+                cell = parent[cell]
+                path.append(cell)
+            path.reverse()
+            return path
+        done.add(cell)
+        for n in neighbors[cell]:
+            cost = step_cost[n]
+            if cost == math.inf or n in done:
+                continue
+            new_g = g + cost
+            if new_g < best.get(n, math.inf):
+                best[n] = new_g
+                parent[n] = cell
+                heapq.heappush(heap, (new_g + heuristic[n], new_g, n))
+    return None
+
+
+def risk_astar(neighbors, start, goal, heuristic, risk_at, risk_weight):
+    """Used by the earlier, forecast-based Bot 4 (planners.forecast_astar).
+
+    A* over (cell, time) states where entering a cell costs
     ``1 + risk_weight * risk``, and the risk depends on *when* the bot gets
     there.
 
@@ -159,8 +214,8 @@ def risk_astar(neighbors: list[list[int]], start: int, goal: int,
         return [start]
     push, pop, inf = heapq.heappush, heapq.heappop, math.inf
     best_g = {(start, 0): 0.0}
-    parent: dict[tuple[int, int], tuple[int, int]] = {}
-    expanded_at: dict[int, int] = {}  # cell -> earliest time it was expanded
+    parent = {}
+    expanded_at = {}  # cell -> earliest time it was expanded
     heap = [(heuristic[start], heuristic[start], 0.0, 0, start)]
     while heap:
         _, _, g, t, cell = pop(heap)

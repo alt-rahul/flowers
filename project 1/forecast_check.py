@@ -7,8 +7,6 @@ draws one reliability diagram per forecast (forecast vs observed frequency).
 
     python forecast_check.py --D 50 --out results/forecast_calibration.png
 """
-from __future__ import annotations
-
 import argparse
 
 import numpy as np
@@ -19,8 +17,7 @@ from forecast import FORECASTS
 from ship import Ship
 
 
-def monte_carlo(ship: Ship, q: float, origin: int, horizon: int, runs: int,
-                rng: np.random.Generator) -> np.ndarray:
+def monte_carlo(ship, q, origin, horizon, runs, rng):
     """freq[t, c] = fraction of runs where cell c burns after t updates."""
     probs = spread_probabilities(q)
     freq = np.zeros((horizon + 1, ship.D * ship.D))
@@ -34,7 +31,7 @@ def monte_carlo(ship: Ship, q: float, origin: int, horizon: int, runs: int,
     return freq / runs
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--D", type=int, default=50)

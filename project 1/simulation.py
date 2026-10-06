@@ -1,12 +1,6 @@
 """Running bots on trials, plus a clairvoyant upper bound."""
-from __future__ import annotations
-
 import time
-from dataclasses import dataclass, field
 
-import numpy as np
-
-from bots import Bot
 from fire import FireTrajectory
 from planning import bfs_distances, fire_distances, fireproof_path
 from ship import Ship
@@ -19,32 +13,35 @@ TRAPPED = "trapped"              # the bot is alive, but every route to the butt
 TIMEOUT = "timeout"              # safety cap, should not happen
 
 
-@dataclass
 class Trial:
-    ship: Ship
-    q: float
-    bot_start: int
-    button: int
-    fire_start: int
-    fire: FireTrajectory
-    _to_button: dict[int, list[float]] = field(default_factory=dict, repr=False)
+    """One configuration: a ship, the three starting cells, and the fire's
+    whole future (a FireTrajectory). Every bot is run on the same Trial."""
+
+    def __init__(self, ship, q, bot_start, button, fire_start, fire):
+        self.ship = ship
+        self.q = q
+        self.bot_start = bot_start
+        self.button = button
+        self.fire_start = fire_start
+        self.fire = fire
+        self._to_button = {}   # cache for distances_to_button, keyed by t
 
     @classmethod
-    def generate(cls, D: int, q: float, rng: np.random.Generator) -> "Trial":
+    def generate(cls, D, q, rng):
         ship = Ship.generate(D, rng)
         bot, button, fire = (int(c) for c in rng.choice(ship.open_cells, size=3, replace=False))
         return cls(ship, q, bot, button, fire, FireTrajectory(ship, q, fire, rng))
 
-    def with_new_fire(self, rng: np.random.Generator) -> "Trial":
+    def with_new_fire(self, rng):
         """Same ship and starting cells, but a fresh realisation of the fire."""
         fire = FireTrajectory(self.ship, self.q, self.fire_start, rng)
         return Trial(self.ship, self.q, self.bot_start, self.button, self.fire_start, fire)
 
     @property
-    def max_steps(self) -> int:
+    def max_steps(self):
         return 10 * self.ship.n_open
 
-    def fireproof(self) -> bool:
+    def fireproof(self):
         """True if the bot can win for certain from the start: some path to
         the button stays ahead of even the fastest possible fire (q = 1).
         Decided by two BFSs, with no simulation."""
@@ -52,7 +49,7 @@ class Trial:
         return fireproof_path(self.ship.neighbors, self.bot_start, self.button,
                               fire_dist) is not None
 
-    def distances_to_button(self, t: int) -> list[float]:
+    def distances_to_button(self, t):
         """Distance to the button avoiding the cells burning after t updates.
         Cached per t, since every bot on this trial sees the same fire."""
         if t not in self._to_button:
@@ -61,20 +58,21 @@ class Trial:
         return self._to_button[t]
 
 
-@dataclass
 class Outcome:
-    success: bool
-    reason: str
-    steps: int
-    path: list[int] = field(default_factory=list)
-    # Moves Bot 2's rule would never make: ones that don't shorten the
-    # distance to the button through currently unburnt cells.
-    deviations: int = 0
-    think_ms: float = 0.0  # time spent inside the bot's reset() and act() calls
+    """How one bot did on one trial."""
+
+    def __init__(self, success, reason, steps, path=None, deviations=0, think_ms=0.0):
+        self.success = success          # True if the button was pressed
+        self.reason = reason            # one of the constants above
+        self.steps = steps              # moves made
+        self.path = path if path is not None else []   # cells visited (if recorded)
+        # Moves Bot 2's rule would never make: ones that don't shorten the
+        # distance to the button through currently unburnt cells.
+        self.deviations = deviations
+        self.think_ms = think_ms        # time spent inside the bot's reset() and act() calls
 
 
-def run_bot(trial: Trial, bot: Bot, record_path: bool = False,
-            count_deviations: bool = False) -> Outcome:
+def run_bot(trial, bot, record_path=False, count_deviations=False):
     """Run one bot on one trial. Each time step: the bot picks a move, moves,
     presses the button if it is on it, and otherwise the fire advances.
 
@@ -93,7 +91,7 @@ def run_bot(trial: Trial, bot: Bot, record_path: bool = False,
     think = clock() - t0
     t = 0  # number of fire updates so far
 
-    def done(success: bool, reason: str, steps: int) -> Outcome:
+    def done(success, reason, steps):
         return Outcome(success, reason, steps, path, deviations, think * 1000)
 
     while t < trial.max_steps:
@@ -125,7 +123,7 @@ def run_bot(trial: Trial, bot: Bot, record_path: bool = False,
     return done(False, TIMEOUT, t)
 
 
-def oracle_steps(trial: Trial) -> int | None:
+def oracle_steps(trial):
     """Fewest steps in which a bot that knew the entire future of this fire
     could press the button, or None if no bot could possibly succeed.
 

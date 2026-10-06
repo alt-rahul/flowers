@@ -10,8 +10,6 @@ Or search for the first trial matching a pattern of outcomes (1 = success,
 
     python visualize.py --D 50 --q 0.3 --where bot3=0 bot4=1 --bots bot3 bot4 --out case.png
 """
-from __future__ import annotations
-
 import argparse
 
 import numpy as np
@@ -25,7 +23,7 @@ BLOCKED = "#383835"
 OPEN = SURFACE
 
 
-def find_trial(D, q, seed, where: dict[str, int], limit=5000) -> int:
+def find_trial(D, q, seed, where, limit=5000):
     for i in range(limit):
         trial = Trial.generate(D, q, trial_rng(seed, q, i))
         ok = True
@@ -40,7 +38,7 @@ def find_trial(D, q, seed, where: dict[str, int], limit=5000) -> int:
     raise SystemExit(f"no trial among the first {limit} matches {where}")
 
 
-def draw(trial: Trial, specs: list[str], path: str, title: str) -> None:
+def draw(trial, specs, path, title):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -99,7 +97,7 @@ def draw(trial: Trial, specs: list[str], path: str, title: str) -> None:
     plt.close(fig)
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--D", type=int, default=50)
