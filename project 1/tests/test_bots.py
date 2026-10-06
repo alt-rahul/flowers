@@ -68,7 +68,7 @@ def test_everyone_wins_without_fire_spread():
 def test_bot4_without_risk_matches_bot2_path_lengths():
     for trial in trials(30, q=0.3, seed=4):
         a = run_bot(trial, make_bot("bot2"))
-        b = run_bot(trial, make_bot("bot4:risk_weight=0"))
+        b = run_bot(trial, make_bot("bot4:risk_weight=0,certain_first=false"))
         if a.success and b.success:
             assert a.steps == b.steps
 
@@ -77,3 +77,30 @@ def test_make_bot_parses_options():
     bot = make_bot("bot4:risk_weight=2.5")
     assert bot.risk_weight == 2.5
     assert make_bot("bot2:lazy=false").lazy is False
+
+
+def test_fireproof_matches_clairvoyant_when_fire_is_fastest():
+    # At q = 1 the fire spreads at every chance, so "some path outruns the
+    # fastest possible fire" must agree exactly with the clairvoyant bot.
+    for trial in trials(60, q=1.0, seed=5):
+        assert trial.fireproof() == (oracle_steps(trial) is not None)
+
+
+@pytest.mark.parametrize("q", [0.1, 0.4, 0.7])
+def test_fireproof_trials_are_always_winnable(q):
+    for trial in trials(40, q=q, seed=6):
+        if trial.fireproof():
+            assert oracle_steps(trial) is not None
+
+
+@pytest.mark.parametrize("q", [0.2, 0.5])
+def test_bot2_never_deviates_from_its_own_rule(q):
+    for trial in trials(30, q=q, seed=7):
+        assert run_bot(trial, make_bot("bot2"), count_deviations=True).deviations == 0
+
+
+@pytest.mark.parametrize("q", [0.1, 0.5, 0.9])
+def test_bot4_wins_every_fireproof_trial(q):
+    for trial in trials(40, q=q, seed=8):
+        if trial.fireproof():
+            assert run_bot(trial, make_bot("bot4")).success

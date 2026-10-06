@@ -39,6 +39,86 @@ def bfs_path(neighbors: list[list[int]], start: int, goal: int,
     return None
 
 
+def bfs_distances(neighbors: list[list[int]], source: int,
+                  blocked: Sequence[bool]) -> list[float]:
+    """Distance from `source` to every cell, avoiding blocked cells (inf if
+    unreachable). The source itself is never treated as blocked."""
+    dist = [math.inf] * len(blocked)
+    dist[source] = 0
+    frontier = deque([source])
+    while frontier:
+        cur = frontier.popleft()
+        d = dist[cur] + 1
+        for n in neighbors[cur]:
+            if dist[n] == math.inf and not blocked[n]:
+                dist[n] = d
+                frontier.append(n)
+    return dist
+
+
+def fire_distances(neighbors: list[list[int]], burning: Sequence[int],
+                   n_cells: int) -> list[float]:
+    """Fewest fire updates needed to reach each cell from the cells burning
+    now (multi-source BFS; inf if unreachable). The fire advances at most one
+    cell per update, so a cell at distance d cannot be burning until at least
+    d more updates have happened, whatever q is."""
+    dist = [math.inf] * n_cells
+    frontier = deque()
+    for c in burning:
+        dist[c] = 0
+        frontier.append(c)
+    while frontier:
+        cur = frontier.popleft()
+        d = dist[cur] + 1
+        for n in neighbors[cur]:
+            if dist[n] == math.inf:
+                dist[n] = d
+                frontier.append(n)
+    return dist
+
+
+def fireproof_path(neighbors: list[list[int]], start: int, goal: int,
+                   fire_dist: Sequence[float]) -> list[int] | None:
+    """Shortest path the fire cannot catch even if it spreads at every chance
+    (as if q = 1), or None if there is no such path.
+
+    Entering cell c on move k is safe for sure if fire_dist[c] > k: the bot
+    stands there during the k-th fire update, and the fire needs at least
+    fire_dist[c] updates to arrive. The button only needs fire_dist >= k,
+    because it is pressed before the fire moves. A bot that follows such a
+    path is certain to win, so whether one exists can be decided with one BFS
+    and no simulation. Reaching a cell earlier only helps, so a plain BFS
+    that visits each cell at its earliest possible time is enough.
+    """
+    if start == goal:
+        return [start]
+    parent = {start: start}
+    frontier = [start]
+    k = 0
+    while frontier:
+        k += 1
+        nxt = []
+        for cur in frontier:
+            for n in neighbors[cur]:
+                if n in parent:
+                    continue
+                if n == goal:
+                    if fire_dist[n] >= k:
+                        parent[n] = cur
+                        path = [n]
+                        while n != start:
+                            n = parent[n]
+                            path.append(n)
+                        path.reverse()
+                        return path
+                    continue
+                parent[n] = cur  # never safe later either, so don't revisit
+                if fire_dist[n] > k:
+                    nxt.append(n)
+        frontier = nxt
+    return None
+
+
 def with_neighbors(mask: np.ndarray, D: int) -> np.ndarray:
     """Flat mask of the cells in `mask` plus their up/down/left/right neighbours."""
     m = mask.reshape(D, D)

@@ -2,9 +2,14 @@
 
 Every bot is run on the same trials (same ship, same start cells and the same
 fire realisation), so differences between bots are paired comparisons. Each
-trial also records whether a clairvoyant bot could have succeeded, which is
-an upper bound on any strategy and separates avoidable from unavoidable
-failures.
+trial also records:
+  oracle_success  could a clairvoyant bot have won? (upper bound on any bot;
+                  separates avoidable from unavoidable failures)
+  fireproof       was the trial a certain win from the start? (some path stays
+                  ahead of even the fastest possible fire)
+and each (trial, bot) row records:
+  deviations      moves Bot 2's rule could not have made
+  ms              time spent inside the bot's own code (deciding, not simulating)
 
 Examples:
     python experiments.py --D 50 --q 0:1:0.05 --trials 1000 --out results/coarse.csv
@@ -24,8 +29,9 @@ import numpy as np
 from bots import make_bot
 from simulation import Trial, oracle_steps, run_bot
 
-FIELDS = ["D", "q", "trial", "bot", "success", "reason", "steps", "ms",
-          "oracle_success", "oracle_steps", "bot_to_button", "fire_to_button", "fire_to_bot"]
+FIELDS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms",
+          "oracle_success", "oracle_steps", "fireproof",
+          "bot_to_button", "fire_to_button", "fire_to_bot"]
 
 
 def parse_qs(text: str) -> list[float]:
@@ -55,16 +61,17 @@ def run_chunk(job) -> list[dict]:
             "D": D, "q": q, "trial": i,
             "oracle_success": int(best is not None),
             "oracle_steps": "" if best is None else best,
+            "fireproof": int(trial.fireproof()),
             "bot_to_button": from_button[trial.bot_start],
             "fire_to_button": from_button[trial.fire_start],
             "fire_to_bot": ship.distances_from(trial.fire_start)[trial.bot_start],
         }
         for spec in specs:
-            t0 = time.perf_counter()
-            out = run_bot(trial, make_bot(spec))
-            ms = (time.perf_counter() - t0) * 1000
+            out = run_bot(trial, make_bot(spec), count_deviations=True)
+            # "ms" is time spent deciding (inside the bot), not simulating.
             rows.append({**common, "bot": spec, "success": int(out.success),
-                         "reason": out.reason, "steps": out.steps, "ms": round(ms, 3)})
+                         "reason": out.reason, "steps": out.steps,
+                         "deviations": out.deviations, "ms": round(out.think_ms, 3)})
     return rows
 
 

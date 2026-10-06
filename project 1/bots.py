@@ -18,7 +18,8 @@ from __future__ import annotations
 import numpy as np
 
 from forecast import FORECASTS
-from planning import bfs_path, risk_astar, with_neighbors
+from planning import (bfs_path, fire_distances, fireproof_path, risk_astar,
+                      with_neighbors)
 from ship import Ship
 
 
@@ -133,9 +134,18 @@ class Bot3(Bot):
 
 
 class Bot4(Bot):
-    """Risk-aware, time-dependent A*.
+    """Run when winning is provable; otherwise plan with risk.
 
-    Every step the bot:
+    Every step the bot first asks: is there a path to the button that the
+    fire cannot catch even if it spreads at every single chance (q = 1)?
+    The fire moves at most one cell per step, so this takes two BFSs and no
+    guessing (planning.fireproof_path). If there is one, the bot commits to
+    it and stops thinking. Committing is safe: the fire can gain at most one
+    cell per step and so can the bot, so a path that is fireproof now stays
+    fireproof as the bot walks it. About half of all trials are like this
+    from the very first step, whatever q is.
+
+    Otherwise the bot plans under uncertainty:
       1. Forecasts the fire: p_t[c] ~ P(cell c is burning t updates from now),
          from the cells burning now and the known q, using dynamic message
          passing on the ship's graph (forecast.MessagePassingForecast).
@@ -145,33 +155,48 @@ class Bot4(Bot):
          cells burned independently, so the planner minimises
              path length + risk_weight * (-log P(survive path)).
          Because the risk depends on *when* the bot reaches each cell, a
-         longer path pays twice: its cells are visited later, when the fire
-         has had longer to spread, and the button itself is reached later,
-         when it is more likely to have burned. This is how the bot trades a
-         short path near the fire against a long path away from it.
-      3. Takes the first move of that plan.
+         longer path pays for being slow: its cells, and above all the
+         button, are reached later, when the fire has had longer to spread.
+         With the default risk_weight = 1000 an extra step is only worth
+         about 0.1% survival, so path length is little more than a
+         tie-breaker; time is already priced in through the forecast.
+      3. Takes the first move of that plan, and replans next step.
 
     The A* heuristic is the true BFS distance to the button ignoring fire,
     computed once per trial. It is admissible because each move costs at
     least 1, and much tighter than Euclidean or Manhattan distance on a maze.
 
-    With risk_weight = 0 this reduces to Bot 2 (the shortest fire-free path).
-    forecast="meanfield" swaps in the naive forecast, for comparison.
+    Options, for comparisons: risk_weight = 0 reduces the planner to Bot 2
+    (shortest fire-free path); forecast="meanfield" swaps in the naive
+    forecast; certain_first=False skips the fireproof check.
     """
 
     name = "Bot 4"
 
-    def __init__(self, risk_weight: float = 30.0, forecast: str = "dmp"):
+    def __init__(self, risk_weight: float = 1000.0, forecast: str = "dmp",
+                 certain_first: bool = True):
         self.risk_weight = risk_weight
         self.forecast_cls = FORECASTS[forecast]
+        self.certain_first = certain_first
 
     def reset(self, ship, button, q):
         super().reset(ship, button, q)
         self.heuristic = ship.distances_from(button)
+        self.committed = False  # following a path the fire cannot catch
         self._forecast = None
         self._forecast_fire = None
 
     def act(self, pos, burning):
+        if self.committed:
+            return self._next_on_plan()
+        if self.certain_first:
+            fire_dist = fire_distances(self.ship.neighbors, np.flatnonzero(burning).tolist(),
+                                       len(burning))
+            sure = fireproof_path(self.ship.neighbors, pos, self.button, fire_dist)
+            if sure is not None:
+                self._set_plan(sure)
+                self.committed = True
+                return self._next_on_plan()
         # The forecast only depends on the current fire, so reuse it while the
         # fire has not changed (common when q is small).
         if self._forecast is None or not np.array_equal(burning, self._forecast_fire):

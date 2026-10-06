@@ -67,6 +67,9 @@ def load(paths: list[str]) -> list[dict]:
                 r["oracle_success"] = int(r["oracle_success"])
                 r["steps"] = int(r["steps"])
                 r["ms"] = float(r["ms"])
+                # Columns added later; older CSVs (e.g. the tuning runs) lack them.
+                r["fireproof"] = int(r["fireproof"]) if r.get("fireproof") else None
+                r["deviations"] = int(r["deviations"]) if r.get("deviations") else None
                 rows.append(r)
     return rows
 
@@ -114,6 +117,64 @@ def paired_difference(rows: list[dict], a: str, b: str) -> dict[float, tuple[flo
         d = np.array(d, dtype=float)
         half = 1.96 * d.std(ddof=1) / math.sqrt(len(d)) if len(d) > 1 else math.nan
         out[q] = (float(d.mean()), half, len(d))
+    return out
+
+
+def has_diagnostics(rows: list[dict]) -> bool:
+    return all(r["fireproof"] is not None and r["deviations"] is not None for r in rows)
+
+
+def trial_types(rows: list[dict], qs: list[float]) -> dict[float, tuple[float, float, float, int]]:
+    """Per q, the shares of trials that are a certain win from the start
+    (a fireproof path exists), contested (winnable, but only by deciding
+    well), and impossible (not even a clairvoyant bot wins)."""
+    first = rows[0]["bot"]
+    out = {}
+    for q in qs:
+        rs = [r for r in rows if r["bot"] == first and r["q"] == q]
+        n = len(rs)
+        certain = sum(r["fireproof"] for r in rs)
+        possible = sum(r["oracle_success"] for r in rs)
+        out[q] = (certain / n, (possible - certain) / n, (n - possible) / n, n)
+    return out
+
+
+def contested_stats(rows: list[dict], bots: list[str], qs: list[float]) -> dict:
+    """Success rate (with 95% CI) on contested trials only, per (bot, q)."""
+    out = {}
+    for b in bots:
+        for q in qs:
+            rs = [r for r in rows if r["bot"] == b and r["q"] == q
+                  and r["oracle_success"] and not r["fireproof"]]
+            if rs:
+                k = sum(r["success"] for r in rs)
+                out[(b, q)] = (k / len(rs), wilson(k, len(rs)), len(rs))
+    return out
+
+
+def divergence(rows: list[dict], bots: list[str], qs: list[float]) -> dict:
+    """Share of trials in which each bot makes at least one move that Bot 2's
+    rule (step along a shortest fire-free path) could not have made."""
+    out = {}
+    for b in bots:
+        for q in qs:
+            rs = [r for r in rows if r["bot"] == b and r["q"] == q]
+            if rs:
+                k = sum(r["deviations"] > 0 for r in rs)
+                out[(b, q)] = (k / len(rs), wilson(k, len(rs)))
+    return out
+
+
+def divergence_outcomes(rows: list[dict], bot: str, base: str = "bot2") -> dict:
+    """Pooled over q: outcomes of `bot` vs `base` on the same trials, split
+    by whether `bot` ever left Bot 2's rule."""
+    by = defaultdict(dict)
+    for r in rows:
+        by[(r["q"], r["trial"])][r["bot"]] = r
+    out = {True: Counter(), False: Counter()}
+    for v in by.values():
+        if bot in v and base in v:
+            out[v[bot]["deviations"] > 0][(v[bot]["success"], v[base]["success"])] += 1
     return out
 
 
@@ -195,11 +256,65 @@ def markdown_tables(rows, bots, qs, stats, base=None) -> str:
         lines.append(f"| {bot_label(b)} | {total} | " + " | ".join(cells)
                      + f" | {sum(avoidable.values()) / total:.0%} |")
 
-    lines.append("\n### Mean wall-clock time per trial (ms, one core)\n")
-    lines.append("| " + " | ".join(bot_label(b) for b in bots) + " |")
-    lines.append("|---" * len(bots) + "|")
-    ms = [np.mean([stats[(b, q)]["ms"] for q in qs if (b, q) in stats]) for b in bots]
-    lines.append("| " + " | ".join(f"{m:.1f}" for m in ms) + " |")
+    if has_diagnostics(rows):
+        lines.append(diagnostic_tables(rows, bots, qs))
+
+    lines.append("\n### Thinking time (one core; time spent inside the bot's own code)\n")
+    lines.append("| | " + " | ".join(bot_label(b) for b in bots) + " |")
+    lines.append("|---" * (len(bots) + 1) + "|")
+    per_trial, per_move = [], []
+    for b in bots:
+        rs = [r for r in rows if r["bot"] == b]
+        per_trial.append(np.mean([r["ms"] for r in rs]))
+        per_move.append(1000 * sum(r["ms"] for r in rs) / max(1, sum(r["steps"] for r in rs)))
+    lines.append("| ms per trial | " + " | ".join(f"{m:.1f}" for m in per_trial) + " |")
+    lines.append("| µs per move | " + " | ".join(f"{m:.0f}" for m in per_move) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def diagnostic_tables(rows, bots, qs) -> str:
+    lines = []
+    types = trial_types(rows, qs)
+    lines.append("\n### Trial types: certain from the start, contested, or impossible\n")
+    lines.append("Certain = a path exists that even the fastest possible fire (q = 1) "
+                 "cannot catch, found with two BFSs and no simulation. Impossible = not "
+                 "even the clairvoyant bot wins. Contested = everything else.\n")
+    lines.append("| q | trials | certain win | contested | impossible |")
+    lines.append("|---|---|---|---|---|")
+    for q in qs:
+        c, m, i, n = types[q]
+        lines.append(f"| {q:g} | {n} | {c:.1%} | {m:.1%} | {i:.1%} |")
+
+    cont = contested_stats(rows, bots, qs)
+    lines.append("\n### Success rate on contested trials only\n")
+    lines.append("| q | contested trials | " + " | ".join(bot_label(b) for b in bots) + " |")
+    lines.append("|---" * (len(bots) + 2) + "|")
+    for q in qs:
+        n = next((cont[(b, q)][2] for b in bots if (b, q) in cont), 0)
+        cells = [f"{cont[(b, q)][0]:.3f}" if (b, q) in cont else "" for b in bots]
+        lines.append(f"| {q:g} | {n} | " + " | ".join(cells) + " |")
+
+    others = [b for b in bots if b not in ("bot1", "bot2")]
+    if "bot2" in bots and others:
+        div = divergence(rows, others, qs)
+        lines.append("\n### How often a bot leaves Bot 2's rule\n")
+        lines.append("Share of trials with at least one move that is not a step along a "
+                     "shortest fire-free path (Bot 2 never makes such a move).\n")
+        lines.append("| q | " + " | ".join(bot_label(b) for b in others) + " |")
+        lines.append("|---" * (len(others) + 1) + "|")
+        for q in qs:
+            lines.append(f"| {q:g} | " + " | ".join(
+                f"{div[(b, q)][0]:.1%}" for b in others if (b, q) in div) + " |")
+        lines.append("\nOutcomes on the same trials, pooled over q:\n")
+        lines.append("| Bot | left Bot 2's rule? | trials | won, Bot 2 lost | Bot 2 won, lost "
+                     "| both won | both lost |")
+        lines.append("|---|---|---|---|---|---|---|")
+        for b in others:
+            out = divergence_outcomes(rows, b)
+            for dev in (True, False):
+                c = out[dev]
+                lines.append(f"| {bot_label(b)} | {'yes' if dev else 'no'} | {sum(c.values())} "
+                             f"| {c[(1, 0)]} | {c[(0, 1)]} | {c[(1, 1)]} | {c[(0, 0)]} |")
     return "\n".join(lines) + "\n"
 
 
@@ -297,6 +412,162 @@ def plot_differences(path, rows, bots, qs):
     plt.close(fig)
 
 
+def _significant_span(rows, qs, base="bot4", rivals=("bot2", "bot3")):
+    """Smallest and largest q at which `base` beats every rival with 95%
+    confidence (paired by trial), or None."""
+    diffs = [paired_difference(rows, base, r) for r in rivals]
+    sig = [q for q in qs if all(q in d and d[q][0] - d[q][1] > 0 for d in diffs)]
+    return (min(sig), max(sig), sig) if sig else None
+
+
+def plot_centerpiece(path, rows, bots, qs, stats):
+    """Top: success rate of every bot (and the clairvoyant bound) against q.
+    Bottom: Bot 4's paired advantage over each other bot, on the same x-axis.
+    The shaded band is where Bot 4 beats both Bot 2 and Bot 3 with 95%
+    confidence."""
+    import matplotlib.pyplot as plt
+
+    fig, (top, bottom) = plt.subplots(2, 1, figsize=(8.5, 8), dpi=150, sharex=True,
+                                      gridspec_kw={"height_ratios": [3, 2]})
+    fig.patch.set_facecolor(SURFACE)
+    span = _significant_span(rows, qs)
+    for ax in (top, bottom):
+        if span:
+            ax.axvspan(span[0], span[1], color=GRID, alpha=0.6, linewidth=0, zorder=0)
+
+    o = [next(stats[(b, q)] for b in bots if (b, q) in stats) for q in qs]
+    top.plot(qs, [s["oracle_rate"] for s in o], color=REFERENCE, linewidth=1.5,
+             linestyle=(0, (4, 3)), label="Clairvoyant bound", zorder=4)
+    for i, b in enumerate(bots):
+        pts = [stats[(b, q)] for q in qs if (b, q) in stats]
+        top.plot([s["q"] for s in pts], [s["rate"] for s in pts], color=COLORS[i], linewidth=2,
+                 marker=MARKERS[i], markersize=4.5, markeredgecolor=SURFACE,
+                 markeredgewidth=1, label=bot_label(b), zorder=3)
+    top.set_ylim(0.4, 1.01)
+    top.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+    half = max((s["ci"][1] - s["ci"][0]) / 2 for s in stats.values())
+    _style(top, "Success rate by flammability",
+           f"All four bots on the same trials. 95% CIs within ±{half:.1%}. "
+           "The y-axis starts at 40%.", "Success rate", xlabel="")
+    top.legend(frameon=False, fontsize=9, labelcolor=INK, loc="lower left")
+    if span:
+        top.text((span[0] + span[1]) / 2, 0.985, "Bot 4 ahead of Bots 2 and 3\n(95% confidence)",
+                 ha="center", va="top", fontsize=8.5, color=INK_2)
+        if span[1] < max(qs):
+            top.text((span[1] + max(qs)) / 2, 0.44, "All bots tie:\nthe start decides",
+                     ha="center", va="bottom", fontsize=8.5, color=INK_2)
+
+    bottom.axhline(0, color=INK_2, linewidth=1, zorder=2)
+    base = "bot4"
+    for i, b in enumerate(bots):
+        if b == base:
+            continue
+        d = paired_difference(rows, base, b)
+        x = [q for q in qs if q in d]
+        y = np.array([d[q][0] for q in x])
+        h = np.array([d[q][1] for q in x])
+        bottom.fill_between(x, y - h, y + h, color=COLORS[i], alpha=0.12, linewidth=0, zorder=1)
+        bottom.plot(x, y, color=COLORS[i], linewidth=2, marker=MARKERS[i], markersize=4.5,
+                    markeredgecolor=SURFACE, markeredgewidth=1, zorder=3,
+                    label=f"Bot 4 minus {bot_label(b)}")
+    bottom.set_xlim(min(qs), max(qs))
+    bottom.yaxis.set_major_formatter(lambda v, _: "0" if abs(v) < 1e-9 else f"{v * 100:+.0f} pts")
+    _style(bottom, "Bot 4's advantage on the same trials",
+           "Paired difference in success rate. Above zero = Bot 4 better. Bands: 95% CI.",
+           "Difference")
+    bottom.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def plot_trial_types(path, qs, types):
+    """How many trials are decided at the start, contested, or impossible."""
+    import matplotlib.pyplot as plt
+
+    certain = np.array([types[q][0] for q in qs])
+    winnable = certain + np.array([types[q][1] for q in qs])
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+    fig.patch.set_facecolor(SURFACE)
+    ax.fill_between(qs, certain, winnable, color=GRID, linewidth=0, zorder=1)
+    ax.plot(qs, winnable, color=INK, linewidth=2, zorder=3)
+    ax.plot(qs, certain, color=INK_2, linewidth=2, linestyle=(0, (4, 3)), zorder=3)
+    i = len(qs) // 4
+    ax.text(qs[i], winnable[i] + 0.03, "Clairvoyant bot can win", color=INK, fontsize=9.5)
+    ax.text(qs[-1], certain[-1] - 0.04, "Certain win from the start", color=INK_2,
+            fontsize=9.5, ha="right", va="top")
+    mid = len(qs) // 3
+    ax.text(qs[mid], (certain[mid] + winnable[mid]) / 2, "Contested:\ndecisions matter here",
+            color=INK, fontsize=10, ha="center", va="center", fontweight="bold")
+    ax.text(qs[-1], 0.97, "No bot can win above the top line", color=INK_2, fontsize=9,
+            ha="right", va="top")
+    ax.set_xlim(min(qs), max(qs))
+    ax.set_ylim(0, 1.0)
+    ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+    _style(ax, "Which trials can a bot's decisions change?",
+           "Share of trials. A certain win is found with two BFSs: some path stays ahead "
+           "of even a q = 1 fire.", "Share of trials")
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def plot_contested(path, bots, qs, cont, min_trials=50):
+    """Success rate restricted to contested trials, where bots can differ."""
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+    fig.patch.set_facecolor(SURFACE)
+    lowest, half = 1.0, 0.0
+    for i, b in enumerate(bots):
+        pts = [(q, cont[(b, q)]) for q in qs if (b, q) in cont and cont[(b, q)][2] >= min_trials]
+        x = [q for q, _ in pts]
+        y = [c[0] for _, c in pts]
+        lowest = min([lowest] + y)
+        half = max([half] + [(c[1][1] - c[1][0]) / 2 for _, c in pts])
+        ax.plot(x, y, color=COLORS[i], linewidth=2, marker=MARKERS[i], markersize=5,
+                markeredgecolor=SURFACE, markeredgewidth=1.2, label=bot_label(b), zorder=3)
+    ax.set_xlim(min(qs), max(qs))
+    ax.set_ylim(math.floor((lowest - 0.02) * 20) / 20, 1.005)
+    ax.yaxis.set_major_locator(MultipleLocator(0.05))
+    ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+    _style(ax, "Success on contested trials",
+           f"Trials that are winnable but not certain from the start (q values with at least "
+           f"{min_trials} such trials). 95% CIs within ±{half:.1%}.", "Success rate")
+    _legend(ax, loc="lower left")
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def plot_divergence(path, bots, qs, div):
+    """How often Bots 3 and 4 make a move Bot 2's rule could not."""
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+
+    fig, ax = plt.subplots(figsize=(8, 4.6), dpi=150)
+    fig.patch.set_facecolor(SURFACE)
+    for i, b in enumerate(bots):
+        if b in ("bot1", "bot2"):
+            continue
+        x = [q for q in qs if (b, q) in div]
+        ax.plot(x, [div[(b, q)][0] for q in x], color=COLORS[i], linewidth=2,
+                marker=MARKERS[i], markersize=5, markeredgecolor=SURFACE,
+                markeredgewidth=1.2, label=bot_label(b), zorder=3)
+    ax.set_xlim(min(qs), max(qs))
+    ax.set_ylim(bottom=0)
+    ax.yaxis.set_major_locator(MultipleLocator(0.05))
+    ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+    _style(ax, "How often a bot decides differently from Bot 2",
+           "Share of trials with at least one move off every shortest fire-free path. "
+           "Bot 2 is 0% by definition.", "Share of trials")
+    _legend(ax, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+
+
 def plot_failures(path, bots, qs, stats):
     """Stacked bars: why each bot failed, pooled over the given q values,
     split into failures a clairvoyant bot could have avoided or not."""
@@ -375,11 +646,19 @@ def main() -> None:
         return
     import matplotlib
     matplotlib.use("Agg")
-    plot_success(os.path.join(args.out, "success_rate.png"), bots, qs, stats)
-    plot_success(os.path.join(args.out, "success_given_winnable.png"), bots, qs, stats,
-                 conditional=True)
-    if len(bots) > 1:
-        plot_differences(os.path.join(args.out, "bot4_paired_gain.png"), rows, bots, qs)
+    if "bot4" in bots and has_diagnostics(rows):
+        plot_centerpiece(os.path.join(args.out, "centerpiece.png"), rows, bots, qs, stats)
+        plot_trial_types(os.path.join(args.out, "trial_types.png"), qs, trial_types(rows, qs))
+        plot_contested(os.path.join(args.out, "success_contested.png"), bots, qs,
+                       contested_stats(rows, bots, qs))
+        plot_divergence(os.path.join(args.out, "divergence.png"), bots, qs,
+                        divergence(rows, bots, qs))
+    else:
+        plot_success(os.path.join(args.out, "success_rate.png"), bots, qs, stats)
+        plot_success(os.path.join(args.out, "success_given_winnable.png"), bots, qs, stats,
+                     conditional=True)
+        if len(bots) > 1:
+            plot_differences(os.path.join(args.out, "bot4_paired_gain.png"), rows, bots, qs)
     lo, hi = (float(x) for x in args.failure_q.split(":"))
     plot_failures(os.path.join(args.out, "failure_reasons.png"), bots,
                   [q for q in qs if lo <= q <= hi], stats)
