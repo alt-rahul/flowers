@@ -1,0 +1,5 @@
+# Compiled programs (make rebuilds them).
+bin/
+# Raw experiment output is large; regenerate it with bin/experiments.
+results/*.csv
+!results/summary.csv
