@@ -1,9 +1,16 @@
-"""How well do Bot 4's fire forecasts match the real fire?
+"""How well do the fire predictions match the real fire?
 
-For random ships and fire origins, compare each forecast's p_t(c) with the
-fraction of Monte Carlo fire runs (the real spread rule) in which cell c is
-burning after t updates. Prints the bias and mean absolute error per q and
-draws one reliability diagram per forecast (forecast vs observed frequency).
+For random ships and fire origins, compare each model's p_t(c), the chance
+that cell c is burning after t updates, with the fraction of Monte Carlo fire
+runs (the real spread rule) in which it is. Prints the bias and mean absolute
+error per q and draws one reliability diagram per model (predicted vs
+observed frequency). The models:
+
+    race        Bot 4's: the fire must travel d cells (maze distance) and
+                advances one cell per step with probability q, so
+                p_t(c) = P(Binomial(t, q) >= d)
+    dmp         message passing (the earlier, forecast-based Bot 4)
+    meanfield   the naive forecast that message passing replaced
 
     python forecast_check.py --D 50 --out results/forecast_calibration.png
 """
@@ -29,6 +36,23 @@ def monte_carlo(ship, q, origin, horizon, runs, rng):
             burning |= fire_step(burning, ship.grid, probs, rng)
             freq[t] += burning.ravel()
     return freq / runs
+
+
+def race_probabilities(ship, q, origin, horizon):
+    """p[t, c] = P(Binomial(t, q) >= d(c)), d = maze distance from the origin."""
+    dist = np.array(ship.distances_from(origin))
+    reachable = np.isfinite(dist)
+    d = np.where(reachable, dist, 0).astype(int)
+    p = np.zeros((horizon + 1, ship.D * ship.D))
+    pmf = np.zeros(horizon + 2)
+    pmf[0] = 1.0
+    for t in range(horizon + 1):
+        if t > 0:
+            pmf[1:] = pmf[1:] * (1 - q) + pmf[:-1] * q
+            pmf[0] *= 1 - q
+        at_least = np.cumsum(pmf[::-1])[::-1]        # at_least[j] = P(at least j advances)
+        p[t] = np.where(reachable & (d <= t), at_least[np.minimum(d, t)], 0.0)
+    return p
 
 
 def main():
@@ -57,21 +81,28 @@ def main():
             cases[q].append((ship, origin, monte_carlo(ship, q, origin, args.horizon,
                                                        args.runs, rng)))
 
-    titles = {"meanfield": "Naive mean-field", "dmp": "Message passing (used by Bot 4)"}
+    titles = {"race": "Race model (Bot 4)", "dmp": "Message passing (earlier Bot 4)",
+              "meanfield": "Naive mean-field"}
     bins = np.linspace(0, 1, 11)
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5.6), dpi=150, sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5.6), dpi=150, sharey=True)
     fig.patch.set_facecolor(SURFACE)
-    print(f"{'forecast':>10} {'q':>5} {'bias (forecast - real)':>24} {'mean abs error':>15}")
-    for ax, kind in zip(axes, ["meanfield", "dmp"]):
+    print(f"{'model':>10} {'q':>5} {'bias (predicted - real)':>24} {'mean abs error':>15}")
+    for ax, kind in zip(axes, ["race", "dmp", "meanfield"]):
         ax.plot([0, 1], [0, 1], color=INK_2, linewidth=1, zorder=1)
         for i, q in enumerate(qs):
             pred, real = [], []
             for ship, origin, freq in cases[q]:
                 burning = np.zeros(ship.D * ship.D, dtype=bool)
                 burning[origin] = True
-                forecast = FORECASTS[kind](ship, q, burning)
+                if kind == "race":
+                    race = race_probabilities(ship, q, origin, args.horizon)
+                else:
+                    forecast = FORECASTS[kind](ship, q, burning)
                 for t in range(1, args.horizon + 1):
-                    p = forecast.prob_at(t)[ship.open_cells]
+                    if kind == "race":
+                        p = race[t][ship.open_cells]
+                    else:
+                        p = forecast.prob_at(t)[ship.open_cells]
                     f = freq[t][ship.open_cells]
                     # Skip cells that are certain either way; they say nothing.
                     keep = (p > 1e-3) | (f > 0)
@@ -94,14 +125,15 @@ def main():
         ax.tick_params(colors=INK_2, labelsize=9, length=0)
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
-        ax.set_xlabel("Forecast probability a cell is burning", color=INK_2)
+        ax.set_xlabel("Predicted probability a cell is burning", color=INK_2)
         ax.set_title(titles[kind], loc="left", color=INK, fontsize=11, pad=8)
     axes[0].set_ylabel("Observed frequency (Monte Carlo)", color=INK_2)
     axes[0].legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper left")
-    fig.suptitle("Fire forecasts vs the real fire", x=0.01, ha="left", color=INK,
+    fig.suptitle("Fire predictions vs the real fire", x=0.01, ha="left", color=INK,
                  fontsize=13, fontweight="bold")
-    fig.text(0.01, 0.905, "On the diagonal = calibrated; below it = forecast more pessimistic "
-             "than reality.", color=INK_2, fontsize=9.5)
+    fig.text(0.01, 0.905, "On the diagonal = calibrated. Above it = optimistic (the fire comes "
+             "more often than predicted); below it = pessimistic (predicts fire that doesn't "
+             "come).", color=INK_2, fontsize=9.5)
     fig.tight_layout(rect=(0, 0, 1, 0.9))
     fig.savefig(args.out, facecolor=SURFACE)
     print(f"wrote {args.out}")

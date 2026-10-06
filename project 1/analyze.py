@@ -36,9 +36,12 @@ INK_2 = "#52514e"
 
 
 def bot_label(spec):
-    """'bot4:risk_weight=10' -> 'Bot 4 (risk_weight=10)'."""
+    """'bot4:penalty=5' -> 'Bot 4 (penalty=5)'; 'bot4_forecast' -> 'Bot 4 (forecast)'."""
     name, _, args = spec.partition(":")
-    label = f"Bot {name[3:]}" if name.startswith("bot") else name
+    if name == "bot4_forecast":
+        label = "Bot 4 (forecast)"
+    else:
+        label = f"Bot {name[3:]}" if name.startswith("bot") else name
     return f"{label} ({args})" if args else label
 
 
@@ -449,7 +452,10 @@ def plot_centerpiece(path, rows, bots, qs, stats):
            "The y-axis starts at 40%.", "Success rate", xlabel="")
     top.legend(frameon=False, fontsize=9, labelcolor=INK, loc="lower left")
     if span:
-        top.text((span[0] + span[1]) / 2, 0.985, "Bot 4 ahead of Bots 2 and 3\n(95% confidence)",
+        inside = [q for q in qs if span[0] <= q <= span[1]]
+        note = "95% confidence" if len(span[2]) == len(inside) else \
+            f"95% confidence at {len(span[2])} of these {len(inside)} q values"
+        top.text((span[0] + span[1]) / 2, 0.985, f"Bot 4 ahead of Bots 2 and 3\n({note})",
                  ha="center", va="top", fontsize=8.5, color=INK_2)
         if span[1] < max(qs):
             top.text((span[1] + max(qs)) / 2, 0.44, "All bots tie:\nthe start decides",
@@ -474,6 +480,53 @@ def plot_centerpiece(path, rows, bots, qs, stats):
            "Paired difference in success rate. Above zero = Bot 4 better. Bands: 95% CI.",
            "Difference")
     bottom.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def plot_versions(path, rows, qs, stats):
+    """The two Bot 4 designs side by side. Top: how far each bot falls short
+    of the clairvoyant bound. Bottom: the new Bot 4 minus the earlier,
+    forecast-based one, paired by trial. Colors match the main charts; the
+    earlier Bot 4 is the neutral dashed line."""
+    import matplotlib.pyplot as plt
+
+    from matplotlib.ticker import MaxNLocator
+
+    series = [("bot2", COLORS[1], MARKERS[1], "-"), ("bot3", COLORS[2], MARKERS[2], "-"),
+              ("bot4", COLORS[3], MARKERS[3], "-"), ("bot4_forecast", REFERENCE, "v", (0, (4, 2)))]
+    fig, (top, bottom) = plt.subplots(2, 1, figsize=(8.5, 7.5), dpi=150, sharex=True,
+                                      gridspec_kw={"height_ratios": [3, 2]})
+    fig.patch.set_facecolor(SURFACE)
+    for b, color, marker, style in series:
+        x = [q for q in qs if (b, q) in stats]
+        y = [100 * (stats[(b, q)]["oracle_rate"] - stats[(b, q)]["rate"]) for q in x]
+        top.plot(x, y, color=color, linewidth=2, linestyle=style, marker=marker, markersize=4.5,
+                 markeredgecolor=SURFACE, markeredgewidth=1, label=bot_label(b), zorder=3)
+    top.set_ylim(bottom=0)
+    top.yaxis.set_major_locator(MaxNLocator(integer=True))
+    top.yaxis.set_major_formatter(lambda v, _: f"{v:.0f} pts")
+    _style(top, "How far each bot falls below the clairvoyant bound",
+           "Clairvoyant success rate minus the bot's, on the same trials. Lower is better.",
+           "Shortfall", xlabel="")
+    top.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper right")
+
+    d = paired_difference(rows, "bot4", "bot4_forecast")
+    x = [q for q in qs if q in d]
+    y = np.array([d[q][0] for q in x])
+    h = np.array([d[q][1] for q in x])
+    bottom.axhline(0, color=INK_2, linewidth=1, zorder=2)
+    bottom.fill_between(x, y - h, y + h, color=COLORS[3], alpha=0.15, linewidth=0, zorder=1)
+    bottom.plot(x, y, color=COLORS[3], linewidth=2, marker=MARKERS[3], markersize=4.5,
+                markeredgecolor=SURFACE, markeredgewidth=1, zorder=3,
+                label="Bot 4 minus Bot 4 (forecast)")
+    bottom.set_xlim(min(qs), max(qs))
+    bottom.yaxis.set_major_formatter(lambda v, _: "0" if abs(v) < 1e-9 else f"{v * 100:+.1f} pts")
+    _style(bottom, "New Bot 4 vs the earlier one, same trials",
+           "Paired difference in success rate. Below zero = the earlier Bot 4 was better. "
+           "Band: 95% CI.", "Difference")
+    bottom.legend(frameon=False, fontsize=9, labelcolor=INK, loc="lower right")
     fig.tight_layout()
     fig.savefig(path, facecolor=SURFACE)
     plt.close(fig)
@@ -622,6 +675,9 @@ def main():
     parser.add_argument("--no-plots", action="store_true")
     parser.add_argument("--base", help="bot the others are compared with (default: last)")
     parser.add_argument("--D", type=int, help="only use trials on ships of this size")
+    parser.add_argument("--bots", nargs="+", help="only these bots, in this order")
+    parser.add_argument("--versions", action="store_true",
+                        help="only draw the Bot 4 vs Bot 4 (forecast) chart")
     parser.add_argument("--failure-q", default="0.2:0.6",
                         help="q range pooled in the failure chart (default 0.2:0.6)")
     args = parser.parse_args()
@@ -629,7 +685,11 @@ def main():
     rows = load(args.csv)
     if args.D is not None:
         rows = [r for r in rows if r["D"] == args.D]
+    if args.bots:
+        rows = [r for r in rows if r["bot"] in args.bots]
     bots, qs, stats = summarize(rows)
+    if args.bots:
+        bots = [b for b in args.bots if b in bots]
     os.makedirs(args.out, exist_ok=True)
     write_summary_csv(os.path.join(args.out, "summary.csv"), bots, qs, stats)
     md = markdown_tables(rows, bots, qs, stats, args.base)
@@ -637,6 +697,11 @@ def main():
         f.write(md)
     print(md)
     if args.no_plots:
+        return
+    if args.versions:
+        import matplotlib
+        matplotlib.use("Agg")
+        plot_versions(os.path.join(args.out, "bot4_versions.png"), rows, qs, stats)
         return
     if len(bots) > len(COLORS):
         # The palette has one color per bot; never cycle colors.

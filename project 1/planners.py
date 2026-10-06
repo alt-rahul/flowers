@@ -61,6 +61,12 @@ def avoid_fire_and_neighbors(ship, pos, button, burning, q):
 #   If P(the fire advances at least d cells in k steps) > threshold, we
 #   assume the cell WILL be on fire by the time we arrive: "predicted fire".
 #
+#   Along one route this is exact: each cell on the route waits for its own
+#   q-coin from the cell before it. The real fire can also arrive by other
+#   routes (loops, other burning cells), which only makes it faster, so the
+#   true probability is never lower than this one: the race model is a
+#   slightly optimistic lower bound (forecast_check.py measures how much).
+#
 # THE SEARCH
 #   A* from the bot to the button, where entering a cell costs
 #       1                  for an ordinary cell
