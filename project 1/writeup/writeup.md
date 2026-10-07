@@ -21,15 +21,8 @@ generation phases. Phase 1 produces a tree, because every cell it opens touches
 exactly one open cell at that moment, so there is exactly one route between any
 two cells. The loops that phase 2 adds matter a lot for this project: without
 them there would only ever be one route to the button, and the bots would have
-nothing to decide. Rescanning the whole grid for candidate cells on every
-iteration of phase 1 would cost $O(D^2)$ per opening, so $O(D^4)$ overall.
-Instead I keep a list of the current candidates and update it as I go: opening
-a cell only changes the neighbour counts of its four neighbours, so at most four
-cells join or leave the list, and a dictionary from position to list index lets
-me remove one in constant time. That makes phase 1 $O(D^2)$, and phase 2
-similarly only rechecks the cells around each opening. At $D = 50$ a ship has
-about 1,631 open cells (65% of the grid), phase 1 leaves about 449 dead ends,
-phase 2 cuts that to about 224, and generating a ship takes about 19 ms.
+nothing to decide. At $D = 50$ a ship has about 1,631 open cells (65% of the
+grid), phase 1 leaves about 449 dead ends, and phase 2 cuts that to about 224.
 
 ![Figure 1: The same 30 by 30 ship after phase 1 (a tree) and after phase 2. Orange cells are dead ends; blue cells were opened in phase 2 and create the loops.](../results/ship_phases.png){width=62%}
 
@@ -204,10 +197,9 @@ model thinks and detours look safer than they are. Section 3 shows this losing
 a trial.
 
 I wrote the code to be readable first (a grid of objects, `(row, col)` tuples
-and plain loops), and made it fast where it counted. Ship generation is
-$O(D^2)$ instead of $O(D^4)$. Each tile's open neighbours are computed once. The
-binomial tail is turned into a lookup table once per $q$, so the danger check
-for a cell is one comparison. The Manhattan heuristic keeps A\* searching
+and plain loops), and only made Bot 4 faster where it counted. The binomial tail
+is turned into a lookup table once per $q$, so the danger check for a cell is
+one comparison. The Manhattan heuristic keeps A\* searching
 towards the button instead of in every direction, as plain uniform cost search
 would. Trials stop as soon as the outcome is certain. Because every bot sees the
 same fire, comparisons are paired, which needs about 16 times fewer trials for
@@ -215,7 +207,7 @@ the same precision on a difference. And trials run in parallel on every core,
 with each trial's random seed depending only on (seed, $q$, trial number), so
 the results don't depend on how the work is split up and any single trial can
 be replayed. Table 1 shows how long each bot spends deciding. A whole trial with
-all four bots takes about 0.7 s on one core, so the main run of 83,000 trials
+all four bots takes about a second on one core, so the main run of 83,000 trials
 took several hours on 4 cores.
 
 Table: Table 1: Mean time each bot spends deciding at $D = 50$ (175 trials, $q$ from 0.1 to 0.7).

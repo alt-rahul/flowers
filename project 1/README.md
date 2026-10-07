@@ -17,7 +17,7 @@ pip install numpy matplotlib pytest
 python -m pytest                                   # 105 tests, about 15 seconds
 
 # Experiments: one CSV row per (trial, bot); uses every core
-# (about 0.7 s per trial per core at D = 50, all four bots).
+# (about 1 s per trial per core at D = 50, all four bots).
 python experiments.py --D 50 --q 0:1:0.05 --trials 1000 --out results/main.csv
 python analyze.py results/main.csv.gz --out results --bots bot1 bot2 bot3 bot4
 python figures.py --out results                    # the writeup's extra charts
@@ -75,12 +75,11 @@ is filled in once, and every search simply walks `tile.neighbors`.
 `Ship.generate` follows the spec exactly. Phase 1 (`grow_maze`) opens a
 random interior tile, then repeatedly opens a random wall with exactly one
 open neighbour. Phase 2 (`reduce_dead_ends`) opens a random wall next to a
-random dead end until at most half of the original dead ends remain. Phase 1
-keeps its list of candidate walls up to date as it goes (opening a tile only
-changes its 4 neighbours' counts), so it is O(D^2) instead of rescanning the
-grid every iteration (O(D^4)); phase 2 likewise only rechecks the tiles
-around each opening. Only the first open tile has to be in the interior;
-later tiles may be on the edge of the grid.
+random dead end until at most half of the original dead ends remain. Both
+are written plainly: phase 1 keeps a list of the walls with exactly one open
+neighbour and rechecks the tiles next to each opening, and phase 2 recounts
+the dead ends after each opening. Only the first open tile has to be in the
+interior; later tiles may be on the edge of the grid.
 
 ### Fire
 Each step every open tile that isn't burning catches fire with probability
@@ -304,12 +303,6 @@ The code is written to be easy to follow first: a grid of `Tile` objects,
 `(row, col)` positions, sets and plain loops. Within that, these choices keep
 it fast enough for large experiments:
 
-- **Ship generation is O(D^2).** Phase 1 keeps its candidate walls in a list
-  plus a dictionary of their positions in it, instead of rescanning the grid
-  every iteration (O(D^4)). Phase 2 only rechecks the tiles around each
-  opening instead of recounting every dead end.
-- **Each tile's open neighbours are worked out once**, since walls never
-  change.
 - **Trials stop as soon as the outcome is certain** (button burned, or every
   route cut off).
 - **Every bot replays the same fire** from the same random generator state,
@@ -323,7 +316,7 @@ it fast enough for large experiments:
 - **Trials run in parallel** on every core. Each trial's seed depends only on
   (seed, q, trial index), so results don't depend on how work is split up.
 
-At D = 50 a trial takes about 0.7 s per core for all four bots plus the
+At D = 50 a trial takes about a second per core for all four bots plus the
 certain-win check, so the 83,000-trial main run takes several hours on 4
 cores.
 
@@ -335,8 +328,9 @@ identical rows for every bot (3,300 of 3,300), with the same outcome,
 reason, number of steps, departures from Bot 2's rule and certain-win flag.
 After BFS and A* were rewritten to follow the lecture pseudocode, 495 more
 trials (15 at each q) were rerun: again identical (1,980 of 1,980 rows).
-The ship generator gives identical ships from the same seeds. Only the
-timing column differs. (The stored CSVs also had a few columns for analyses
+After ship generation was rewritten in its plain form, it gave identical
+ships (278 of 278, from D = 5 to 100) and 198 more trials matched (792 of
+792 rows). Only the timing column differs. (The stored CSVs also had a few columns for analyses
 that are no longer part of this project; those were dropped.)
 
 ### Certain wins (the instructor's data-collection hint)

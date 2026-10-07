@@ -110,79 +110,61 @@ class Ship:
 
     def grow_maze(self, rng):
         """Phase 1: open a random interior tile, then keep opening a random
-        wall that has exactly one open neighbour (a "candidate"), until there
-        are none left.
+        blocked tile that has exactly one open neighbour, until there are none
+        left.
 
-        Every new tile touches exactly one open tile when it opens, so the open
-        tiles form a tree: exactly one route between any two of them, and lots
-        of dead ends (a "perfect maze").
+        `candidates` is the list of blocked tiles with exactly one open
+        neighbour. Opening a tile only changes the tiles right next to it, so
+        those are the only ones checked again after each opening.
 
-        Instead of rescanning the whole grid for candidates every round (about
-        D^4 work), we keep the list of candidates up to date: opening a tile
-        only changes the open-neighbour counts of the 4 tiles around it.
+        Every tile opened here touches exactly one open tile at that moment, so
+        the open tiles form a tree: one route between any two tiles, and lots
+        of dead ends.
         """
         D = self.D
         if D < 3:
             raise ValueError("D must be at least 3 so the ship has an interior")
-        open_count = [[0] * D for r in range(D)]   # open neighbours of each tile
-        candidates = []    # walls with exactly one open neighbour
-        where = {}         # position -> its index in `candidates`
+        candidates = []
 
-        def add(pos):
-            where[pos] = len(candidates)
-            candidates.append(pos)
+        def remove_candidate(pos):
+            # Put the last candidate in its place, then drop the last entry.
+            i = candidates.index(pos)
+            candidates[i] = candidates[-1]
+            candidates.pop()
 
-        def remove(pos):
-            # Take a position out of the middle of the list quickly: move the
-            # last entry into its slot, then shorten the list by one.
-            i = where.pop(pos)
-            last = candidates.pop()
-            if i < len(candidates):
-                candidates[i] = last
-                where[last] = i
-
-        def open_tile(pos):
-            r, c = pos
+        def open_tile(r, c):
             self.grid[r][c].is_open = True
-            if pos in where:                 # it was a candidate; not any more
-                remove(pos)
+            if (r, c) in candidates:
+                remove_candidate((r, c))
             for nr, nc in grid_neighbors(D, r, c):
-                open_count[nr][nc] += 1
-                if not self.grid[nr][nc].is_open:
-                    if open_count[nr][nc] == 1:     # a wall with exactly 1 open neighbour
-                        add((nr, nc))
-                    elif open_count[nr][nc] == 2:   # now 2 open neighbours: not a candidate
-                        remove((nr, nc))
+                if self.grid[nr][nc].is_open:
+                    continue
+                count = self.count_open_neighbors((nr, nc))
+                if count == 1:
+                    candidates.append((nr, nc))   # it now has exactly one open neighbour
+                elif count == 2:
+                    remove_candidate((nr, nc))    # it had one, and now it has two
 
-        # A random interior tile: rows and columns 1 .. D-2.
-        r, c = rng.integers(1, D - 1, size=2)
-        open_tile((int(r), int(c)))
+        r, c = rng.integers(1, D - 1, size=2)   # a random interior tile (rows/cols 1 .. D-2)
+        open_tile(int(r), int(c))
         while candidates:
-            open_tile(candidates[rng.integers(len(candidates))])
+            r, c = candidates[rng.integers(len(candidates))]
+            open_tile(r, c)
 
     def reduce_dead_ends(self, rng):
-        """Phase 2: pick a random dead end and open a random wall next to it,
-        until at most half of the original dead ends are left. This adds loops,
-        so there are often several routes between two tiles: that is what gives
-        the bots choices to make.
-
-        Opening a tile can only change whether that tile and the tiles next to
-        it are dead ends, so only those are rechecked after each opening.
-        """
+        """Phase 2: pick a random dead end and open a random blocked tile next
+        to it, until at most half of the original dead ends are left. This adds
+        loops, so there are often several routes between two tiles: that is
+        what gives the bots choices to make."""
         D = self.D
-        ends = set(self.dead_ends())
+        ends = self.dead_ends()
         target = len(ends) / 2
         while len(ends) > target:
-            in_order = sorted(ends)                # row by row, like dead_ends()
-            r, c = in_order[rng.integers(len(in_order))]
+            r, c = ends[rng.integers(len(ends))]
             walls = [(nr, nc) for nr, nc in grid_neighbors(D, r, c) if not self.grid[nr][nc].is_open]
             nr, nc = walls[rng.integers(len(walls))]
             self.grid[nr][nc].is_open = True
-            for pos in [(nr, nc)] + grid_neighbors(D, nr, nc):
-                if self.is_dead_end(pos):
-                    ends.add(pos)
-                else:
-                    ends.discard(pos)
+            ends = self.dead_ends()
 
     def find_neighbors(self):
         """Give every open tile the list of open tiles next to it."""
