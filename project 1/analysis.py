@@ -2,16 +2,15 @@
 
     python analysis.py
 
-Reads the results in results/, saves the charts in plots/ and the tables in
-results/summary.md.
+Reads results/main.csv and results/tuning.csv, saves the charts in plots/
+and the tables in results/summary.md.
 """
-import csv
-import gzip
 import math
 
 import matplotlib
 matplotlib.use("Agg")   # save charts to files without opening a window
 import matplotlib.pyplot as plt
+import pandas as pd
 
 BOTS = ["bot1", "bot2", "bot3", "bot4"]
 NAMES = {"bot1": "Bot 1", "bot2": "Bot 2", "bot3": "Bot 3", "bot4": "Bot 4"}
@@ -24,75 +23,47 @@ REASON_NAMES = {"entered_fire": "walked into fire", "caught": "fire spread onto 
 report = []   # the lines of results/summary.md
 
 
-def load(path, D):
-    """trials[q][trial number][bot] = that bot's row, for ships of size D."""
-    trials = {}
-    with gzip.open(path, "rt") as f:
-        for row in csv.DictReader(f):
-            if int(row["D"]) != D:
-                continue
-            row["success"] = int(row["success"])
-            row["steps"] = int(row["steps"])
-            row["deviations"] = int(row["deviations"])
-            row["ms"] = float(row["ms"])
-            row["fireproof"] = int(row["fireproof"])
-            q = float(row["q"])
-            number = int(row["trial"])
-            if q not in trials:
-                trials[q] = {}
-            if number not in trials[q]:
-                trials[q][number] = {}
-            trials[q][number][row["bot"]] = row
-    return trials
+def column(results, q, bot, name):
+    """One column of the results (for example "success") for one bot at one q,
+    as a list in trial order."""
+    rows = results[(results["q"] == q) & (results["bot"] == bot)]
+    rows = rows.sort_values("trial")
+    return list(rows[name])
 
 
-def success_rate(trials, q, bot):
-    """The bot's success rate at q, and the size of its 95% confidence interval."""
-    wins = 0
-    for results in trials[q].values():
-        wins += results[bot]["success"]
-    n = len(trials[q])
-    rate = wins / n
-    error = 1.96 * math.sqrt(rate * (1 - rate) / n)
-    return rate, error
-
-
-def paired_difference(trials, q, bot_a, bot_b):
-    """bot_a's success rate minus bot_b's on the same trials, and the size of
-    its 95% confidence interval. Both bots faced the same fire on every trial,
-    so each trial gives a difference of -1, 0 or 1."""
-    diffs = []
-    for results in trials[q].values():
-        diffs.append(results[bot_a]["success"] - results[bot_b]["success"])
-    n = len(diffs)
-    mean = sum(diffs) / n
+def mean_and_error(values):
+    """The mean of a list of numbers, and the size of its 95% confidence interval."""
+    n = len(values)
+    mean = sum(values) / n
     total = 0
-    for d in diffs:
-        total += (d - mean) ** 2
+    for value in values:
+        total += (value - mean) ** 2
     standard_deviation = math.sqrt(total / (n - 1))
     error = 1.96 * standard_deviation / math.sqrt(n)
     return mean, error
 
 
-def certain_win_share(trials, q):
+def success_rate(results, q, bot):
+    """The bot's success rate at q, and the size of its 95% confidence interval."""
+    return mean_and_error(column(results, q, bot, "success"))
+
+
+def paired_difference(results, q, bot_a, bot_b):
+    """bot_a's success rate minus bot_b's on the same trials, and the size of
+    its 95% confidence interval. Both bots faced the same fire on every trial,
+    so each trial gives a difference of -1, 0 or 1."""
+    a = column(results, q, bot_a, "success")
+    b = column(results, q, bot_b, "success")
+    diffs = []
+    for i in range(len(a)):
+        diffs.append(a[i] - b[i])
+    return mean_and_error(diffs)
+
+
+def certain_win_share(results, q):
     """The share of trials at q that were a certain win from the start."""
-    count = 0
-    for results in trials[q].values():
-        count += results["bot1"]["fireproof"]
-    return count / len(trials[q])
-
-
-def failure_counts(trials, bot):
-    """How many times the bot failed for each reason, over every q."""
-    counts = {}
-    for reason in REASONS:
-        counts[reason] = 0
-    for q in trials:
-        for results in trials[q].values():
-            reason = results[bot]["reason"]
-            if reason in counts:
-                counts[reason] += 1
-    return counts
+    certain = column(results, q, "bot1", "fireproof")
+    return sum(certain) / len(certain)
 
 
 def save_chart(name):
@@ -102,19 +73,18 @@ def save_chart(name):
 
 # ------------------------------------------------------------- charts ----
 
-def plot_success_rate(trials):
-    qs = sorted(trials)
+def plot_success_rate(results, qs):
     plt.figure(figsize=(8, 5))
     for bot in BOTS:
         rates = []
         for q in qs:
-            rate, error = success_rate(trials, q, bot)
+            rate, error = success_rate(results, q, bot)
             rates.append(100 * rate)
         plt.plot(qs, rates, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
 
     certain = []
     for q in qs:
-        certain.append(100 * certain_win_share(trials, q))
+        certain.append(100 * certain_win_share(results, q))
     plt.plot(qs, certain, "k--", label="Certain win from the start")
 
     plt.xlabel("Flammability q")
@@ -125,13 +95,12 @@ def plot_success_rate(trials):
     save_chart("success_rate.png")
 
 
-def plot_bot4_advantage(trials):
-    qs = sorted(trials)
+def plot_bot4_advantage(results, qs):
     plt.figure(figsize=(8, 5))
     for bot in ["bot1", "bot2", "bot3"]:
         diffs = []
         for q in qs:
-            diff, error = paired_difference(trials, q, "bot4", bot)
+            diff, error = paired_difference(results, q, "bot4", bot)
             diffs.append(100 * diff)
         plt.plot(qs, diffs, marker="o", markersize=3, color=COLORS[bot],
                  label="Bot 4 minus " + NAMES[bot])
@@ -144,35 +113,18 @@ def plot_bot4_advantage(trials):
     save_chart("bot4_advantage.png")
 
 
-def plot_ship_size(trials_by_size):
-    qs = sorted(trials_by_size[25])   # the q values every size was run at
-    plt.figure(figsize=(8, 5))
-    for D in [25, 50, 100]:
-        rates = []
-        for q in qs:
-            rate, error = success_rate(trials_by_size[D], q, "bot4")
-            rates.append(100 * rate)
-        plt.plot(qs, rates, marker="o", label=f"D = {D}")
-    plt.xlabel("Flammability q")
-    plt.ylabel("Bot 4's success rate (%)")
-    plt.title("Bot 4 on three ship sizes")
-    plt.legend()
-    plt.grid()
-    save_chart("ship_size.png")
-
-
-def plot_divergence(trials):
+def plot_divergence(results, qs):
     """How often Bots 3 and 4 make at least one move Bot 2's rule couldn't."""
-    qs = sorted(trials)
     plt.figure(figsize=(8, 5))
     for bot in ["bot3", "bot4"]:
         shares = []
         for q in qs:
+            deviations = column(results, q, bot, "deviations")
             count = 0
-            for results in trials[q].values():
-                if results[bot]["deviations"] > 0:
+            for d in deviations:
+                if d > 0:
                     count += 1
-            shares.append(100 * count / len(trials[q]))
+            shares.append(100 * count / len(deviations))
         plt.plot(qs, shares, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
     plt.xlabel("Flammability q")
     plt.ylabel("Trials (%)")
@@ -182,13 +134,22 @@ def plot_divergence(trials):
     save_chart("divergence.png")
 
 
-def plot_failure_reasons(trials):
+def failure_counts(results, bot):
+    """How many times the bot failed for each reason, over every q."""
+    rows = results[results["bot"] == bot]
+    counts = {}
+    for reason in REASONS:
+        counts[reason] = len(rows[rows["reason"] == reason])
+    return counts
+
+
+def plot_failure_reasons(results):
     """One bar chart per bot: how its failures break down."""
     labels = ["walked\ninto fire", "fire spread\nonto bot", "button\nburned first", "cut off\nfrom button"]
     plt.figure(figsize=(10, 7))
     for i in range(len(BOTS)):
         bot = BOTS[i]
-        counts = failure_counts(trials, bot)
+        counts = failure_counts(results, bot)
         failures = 0
         for reason in REASONS:
             failures += counts[reason]
@@ -204,22 +165,30 @@ def plot_failure_reasons(trials):
     save_chart("failure_reasons.png")
 
 
-def plot_head_to_head(trials):
+def head_to_head(results, q, other):
+    """At q: how many trials Bot 4 won while `other` lost, and the reverse."""
+    bot4 = column(results, q, "bot4", "success")
+    rival = column(results, q, other, "success")
+    bot4_won = 0
+    other_won = 0
+    for i in range(len(bot4)):
+        if bot4[i] == 1 and rival[i] == 0:
+            bot4_won += 1
+        if rival[i] == 1 and bot4[i] == 0:
+            other_won += 1
+    return bot4_won, other_won
+
+
+def plot_head_to_head(results, qs):
     """Out of every 1,000 trials at each q: how many Bot 4 won while Bot 3
     lost, and how many Bot 3 won while Bot 4 lost."""
-    qs = sorted(trials)
     bot4_won = []
     bot3_won = []
     for q in qs:
-        a = 0
-        b = 0
-        for results in trials[q].values():
-            if results["bot4"]["success"] and not results["bot3"]["success"]:
-                a += 1
-            if results["bot3"]["success"] and not results["bot4"]["success"]:
-                b += 1
-        bot4_won.append(1000 * a / len(trials[q]))
-        bot3_won.append(1000 * b / len(trials[q]))
+        a, b = head_to_head(results, q, "bot3")
+        n = len(column(results, q, "bot4", "success"))
+        bot4_won.append(1000 * a / n)
+        bot3_won.append(1000 * b / n)
     plt.figure(figsize=(8, 5))
     plt.plot(qs, bot4_won, marker="o", markersize=3, color=COLORS["bot4"], label="Bot 4 won, Bot 3 lost")
     plt.plot(qs, bot3_won, marker="o", markersize=3, color=COLORS["bot3"], label="Bot 3 won, Bot 4 lost")
@@ -231,114 +200,103 @@ def plot_head_to_head(trials):
     save_chart("head_to_head.png")
 
 
-# The Bot 4 settings tried in tuning, as they are named in results/tuning.csv.gz.
-TUNING_CHOSEN = "bot4:threshold=0.6,penalty=20"
-TUNING_VARIANTS = [
+# The bots tried in tuning, as they are named in results/tuning.csv.
+TUNING_CHOSEN = "bot4 threshold=0.6 penalty=20"
+TUNING_LABELS = [
     ("bot2", "Bot 2"),
     ("bot3", "Bot 3"),
-    ("bot4:threshold=0.4,penalty=5", "θ = 0.4, λ = 5"),
-    ("bot4:threshold=0.4,penalty=20", "θ = 0.4, λ = 20"),
-    ("bot4:threshold=0.4,penalty=100", "θ = 0.4, λ = 100"),
-    ("bot4:threshold=0.6,penalty=5", "θ = 0.6, λ = 5"),
-    ("bot4:threshold=0.6,penalty=100", "θ = 0.6, λ = 100"),
-    ("bot4:penalty=1000", "θ = 0.6, λ = 1000"),
-    ("bot4:threshold=0.8,penalty=5", "θ = 0.8, λ = 5"),
-    ("bot4:threshold=0.8,penalty=20", "θ = 0.8, λ = 20"),
-    ("bot4:threshold=0.8,penalty=100", "θ = 0.8, λ = 100"),
-    ("bot4:lookahead=false", "one-step 60% rule"),
-    ("bot4:fire_metric=manhattan", "Manhattan fire distance"),
+    ("bot4 threshold=0.4 penalty=20", "θ = 0.4, λ = 20"),
+    ("bot4 threshold=0.8 penalty=20", "θ = 0.8, λ = 20"),
+    ("bot4 threshold=0.6 penalty=5", "θ = 0.6, λ = 5"),
+    ("bot4 threshold=0.6 penalty=100", "θ = 0.6, λ = 100"),
+    ("bot4 one-step rule", "one-step 60% rule"),
 ]
 
 
-def tuning_difference(tuning, variant):
-    """The variant's success rate minus the chosen Bot 4's over every tuning
+def tuning_difference(tuning, bot):
+    """The bot's success rate minus the chosen Bot 4's over every tuning
     trial, in points, and the size of its 95% confidence interval."""
     diffs = []
-    for q in tuning:
-        for results in tuning[q].values():
-            diffs.append(results[variant]["success"] - results[TUNING_CHOSEN]["success"])
-    n = len(diffs)
-    mean = sum(diffs) / n
-    total = 0
-    for d in diffs:
-        total += (d - mean) ** 2
-    error = 1.96 * math.sqrt(total / (n - 1)) / math.sqrt(n)
+    for q in sorted(tuning["q"].unique()):
+        a = column(tuning, q, bot, "success")
+        b = column(tuning, q, TUNING_CHOSEN, "success")
+        for i in range(len(a)):
+            diffs.append(a[i] - b[i])
+    mean, error = mean_and_error(diffs)
     return 100 * mean, 100 * error
 
 
 def plot_tuning(tuning):
     labels = []
     diffs = []
-    for variant, label in TUNING_VARIANTS:
-        mean, error = tuning_difference(tuning, variant)
+    for bot, label in TUNING_LABELS:
+        mean, error = tuning_difference(tuning, bot)
         labels.append(label)
         diffs.append(mean)
     plt.figure(figsize=(8, 5))
     plt.barh(labels, diffs)
     plt.axvline(0, color="black")
     plt.xlabel("Success rate minus the chosen Bot 4 (θ = 0.6, λ = 20), in points")
-    plt.title("Bot 4 tuning on 4,000 separate trials")
+    plt.title("Bot 4 tuning on 800 separate trials")
     save_chart("tuning.png")
 
 
 # ------------------------------------------------------------- tables ----
 
-def table_success_rates(trials):
+def table_success_rates(results, qs):
     report.append("## Success rate (95% CI) and certain wins\n")
     report.append("| q | Bot 1 | Bot 2 | Bot 3 | Bot 4 | Certain wins |")
     report.append("|---|---|---|---|---|---|")
-    for q in sorted(trials):
+    for q in qs:
         line = f"| {q:g} |"
         for bot in BOTS:
-            rate, error = success_rate(trials, q, bot)
+            rate, error = success_rate(results, q, bot)
             line += f" {100 * rate:.1f}% ± {100 * error:.1f} |"
-        line += f" {100 * certain_win_share(trials, q):.1f}% |"
+        line += f" {100 * certain_win_share(results, q):.1f}% |"
         report.append(line)
 
 
-def table_differences(trials):
+def table_differences(results, qs):
     report.append("\n## Bot 4 minus each other bot, same trials (points, 95% CI)\n")
     report.append("| q | vs Bot 1 | vs Bot 2 | vs Bot 3 |")
     report.append("|---|---|---|---|")
-    for q in sorted(trials):
+    for q in qs:
         line = f"| {q:g} |"
         for bot in ["bot1", "bot2", "bot3"]:
-            diff, error = paired_difference(trials, q, "bot4", bot)
+            diff, error = paired_difference(results, q, "bot4", bot)
             line += f" {100 * diff:+.1f} ± {100 * error:.1f} |"
         report.append(line)
 
 
-def table_certain_wins(trials):
+def table_certain_wins(results):
     report.append("\n## Certain wins: how many of them each bot won\n")
     report.append("| Bot | Certain-win trials won |")
     report.append("|---|---|")
     for bot in BOTS:
-        won = 0
-        total = 0
-        for q in trials:
-            for results in trials[q].values():
-                if results[bot]["fireproof"]:
-                    total += 1
-                    won += results[bot]["success"]
-        report.append(f"| {NAMES[bot]} | {won} of {total} |")
+        rows = results[(results["bot"] == bot) & (results["fireproof"] == 1)]
+        won = rows["success"].sum()
+        report.append(f"| {NAMES[bot]} | {won} of {len(rows)} |")
 
 
-def table_failures(trials):
+def table_failures(results, qs):
     report.append("\n## Why bots fail (all q, share of each bot's failures)\n")
     report.append("| Bot | Failures | walked into fire | fire spread onto bot | button burned first "
                   "| cut off from button | another bot won the same trial |")
     report.append("|---|---|---|---|---|---|---|")
     for bot in BOTS:
-        counts = failure_counts(trials, bot)
+        counts = failure_counts(results, bot)
         failures = 0
         saved = 0   # failures where another bot won, so a better decision existed
-        for q in trials:
-            for results in trials[q].values():
-                if results[bot]["success"]:
+        for q in qs:
+            success = {}
+            for b in BOTS:
+                success[b] = column(results, q, b, "success")
+            for i in range(len(success[bot])):
+                if success[bot][i] == 1:
                     continue
                 failures += 1
                 for other in BOTS:
-                    if other != bot and results[other]["success"]:
+                    if other != bot and success[other][i] == 1:
                         saved += 1
                         break
         line = f"| {NAMES[bot]} | {failures} |"
@@ -348,7 +306,7 @@ def table_failures(trials):
         report.append(line)
 
 
-def table_head_to_head(trials):
+def table_head_to_head(results, qs):
     report.append("\n## Bot 4 head to head, same trials\n")
     report.append("| q range | Bot 4 lost, Bot 3 won | Bot 4 won, Bot 3 lost "
                   "| Bot 4 lost, Bot 2 won | Bot 4 won, Bot 2 lost |")
@@ -358,18 +316,16 @@ def table_head_to_head(trials):
         for other in ["bot3", "bot2"]:
             lost = 0
             won = 0
-            for q in trials:
-                if low_q <= q <= high_q:
-                    for results in trials[q].values():
-                        if results[other]["success"] and not results["bot4"]["success"]:
-                            lost += 1
-                        if results["bot4"]["success"] and not results[other]["success"]:
-                            won += 1
+            for q in qs:
+                if q >= low_q and q <= high_q:
+                    bot4_won, other_won = head_to_head(results, q, other)
+                    won += bot4_won
+                    lost += other_won
             line += f" {lost} | {won} |"
         report.append(line)
 
 
-def table_divergence(trials):
+def table_divergence(results, qs):
     report.append("\n## Outcomes against Bot 2, split by whether the bot ever left Bot 2's rule\n")
     report.append("| Bot | Left Bot 2's rule? | Trials | Won where Bot 2 lost | Lost where Bot 2 won |")
     report.append("|---|---|---|---|---|")
@@ -378,14 +334,17 @@ def table_divergence(trials):
             count = 0
             won = 0
             lost = 0
-            for q in trials:
-                for results in trials[q].values():
-                    if (results[bot]["deviations"] > 0) != left:
+            for q in qs:
+                deviations = column(results, q, bot, "deviations")
+                success = column(results, q, bot, "success")
+                bot2_success = column(results, q, "bot2", "success")
+                for i in range(len(deviations)):
+                    if (deviations[i] > 0) != left:
                         continue
                     count += 1
-                    if results[bot]["success"] and not results["bot2"]["success"]:
+                    if success[i] == 1 and bot2_success[i] == 0:
                         won += 1
-                    if results["bot2"]["success"] and not results[bot]["success"]:
+                    if bot2_success[i] == 1 and success[i] == 0:
                         lost += 1
             if left:
                 answer = "yes"
@@ -394,85 +353,36 @@ def table_divergence(trials):
             report.append(f"| {NAMES[bot]} | {answer} | {count} | {won} | {lost} |")
 
 
-def table_thinking_time(trials):
-    report.append("\n## Thinking time (time spent deciding, as recorded in the results)\n")
-    report.append("| | Bot 1 | Bot 2 | Bot 3 | Bot 4 |")
-    report.append("|---|---|---|---|---|")
-    per_move = "| µs per move |"
-    per_trial = "| ms per trial |"
-    for bot in BOTS:
-        total_ms = 0.0
-        total_steps = 0
-        count = 0
-        for q in trials:
-            for results in trials[q].values():
-                total_ms += results[bot]["ms"]
-                total_steps += results[bot]["steps"]
-                count += 1
-        per_move += f" {1000 * total_ms / total_steps:.0f} |"
-        per_trial += f" {total_ms / count:.1f} |"
-    report.append(per_move)
-    report.append(per_trial)
-
-
-def table_ship_size(trials_by_size):
-    report.append("\n## Ship size: Bot 4's success rate, and Bot 4 minus Bot 3 (points)\n")
-    report.append("| q | D = 25 | D = 50 | D = 100 | minus Bot 3, D = 25 | D = 50 | D = 100 |")
-    report.append("|---|---|---|---|---|---|---|")
-    for q in sorted(trials_by_size[25]):
-        line = f"| {q:g} |"
-        for D in [25, 50, 100]:
-            rate, error = success_rate(trials_by_size[D], q, "bot4")
-            line += f" {100 * rate:.1f}% |"
-        for D in [25, 50, 100]:
-            diff, error = paired_difference(trials_by_size[D], q, "bot4", "bot3")
-            line += f" {100 * diff:+.1f} ± {100 * error:.1f} |"
-        report.append(line)
-
-
 def table_tuning(tuning):
-    report.append("\n## Bot 4 tuning (4,000 separate trials, seed 7)\n")
+    report.append("\n## Bot 4 tuning (800 separate trials)\n")
     report.append("| Bot | Success | Minus the chosen Bot 4 (points) |")
     report.append("|---|---|---|")
-    variants = [(TUNING_CHOSEN, "θ = 0.6, λ = 20 (chosen)")] + TUNING_VARIANTS
-    for variant, label in variants:
-        wins = 0
-        count = 0
-        for q in tuning:
-            for results in tuning[q].values():
-                wins += results[variant]["success"]
-                count += 1
-        mean, error = tuning_difference(tuning, variant)
-        report.append(f"| {label} | {100 * wins / count:.2f}% | {mean:+.2f} ± {error:.2f} |")
+    for bot, label in [(TUNING_CHOSEN, "θ = 0.6, λ = 20 (chosen)")] + TUNING_LABELS:
+        rows = tuning[tuning["bot"] == bot]
+        mean, error = tuning_difference(tuning, bot)
+        report.append(f"| {label} | {100 * rows['success'].mean():.2f}% | {mean:+.2f} ± {error:.2f} |")
 
 
 def main():
-    trials = load("results/main.csv.gz", 50)
-    trials_by_size = {
-        25: load("results/size.csv.gz", 25),
-        50: trials,
-        100: load("results/size.csv.gz", 100),
-    }
-    tuning = load("results/tuning.csv.gz", 50)
+    results = pd.read_csv("results/main.csv")
+    tuning = pd.read_csv("results/tuning.csv")
+    qs = sorted(results["q"].unique())
 
-    plot_success_rate(trials)
-    plot_bot4_advantage(trials)
-    plot_ship_size(trials_by_size)
-    plot_divergence(trials)
-    plot_failure_reasons(trials)
-    plot_head_to_head(trials)
+    plot_success_rate(results, qs)
+    plot_bot4_advantage(results, qs)
+    plot_divergence(results, qs)
+    plot_failure_reasons(results)
+    plot_head_to_head(results, qs)
     plot_tuning(tuning)
 
     report.append("# Results\n")
-    report.append("Main run: D = 50, 83,000 trials (results/main.csv.gz).\n")
-    table_success_rates(trials)
-    table_differences(trials)
-    table_certain_wins(trials)
-    table_failures(trials)
-    table_head_to_head(trials)
-    table_divergence(trials)
-    table_thinking_time(trials)
-    table_ship_size(trials_by_size)
+    report.append(f"Main run: D = 50, {len(results) // 4} trials (results/main.csv).\n")
+    table_success_rates(results, qs)
+    table_differences(results, qs)
+    table_certain_wins(results)
+    table_failures(results, qs)
+    table_head_to_head(results, qs)
+    table_divergence(results, qs)
     table_tuning(tuning)
 
     with open("results/summary.md", "w") as f:

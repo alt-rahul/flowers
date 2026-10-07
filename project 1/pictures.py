@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from bots import THRESHOLD, bot2_path, bot4_path, danger_radius, predicted_fire
-from experiments import trial_rng
+from experiments import FIRE_SEED
 from fire import spread_fire
-from simulation import Trial, reset_trial, run_bot
+from simulation import run_bot, setup_trial
 from ship import Ship
 
 # Colours for the ship pictures, as [red, green, blue] between 0 and 1
@@ -22,9 +22,7 @@ RED = [1, 0, 0]            # burning now
 YELLOW = [1, 0.85, 0]      # predicted fire
 BLUE = [0.2, 0.5, 0.9]     # opened in phase 2
 
-# The trials to draw, all from the main run
-D = 50
-SEED = 440
+D = 50   # the trials drawn are all from the main run
 
 
 def path_rows_and_columns(path):
@@ -39,10 +37,10 @@ def path_rows_and_columns(path):
 
 def draw_ship_phases():
     """The same 30 x 30 ship after phase 1 and after phase 2."""
-    rng = np.random.default_rng(3)
+    np.random.seed(3)
     ship = Ship(30)
 
-    ship.grow_maze(rng)
+    ship.generate_blocks()
     open_after_phase_1 = ship.open_cells()
     ends = ship.dead_ends()
     picture_1 = []
@@ -57,7 +55,7 @@ def draw_ship_phases():
                 row.append(BLACK)
         picture_1.append(row)
 
-    ship.reduce_dead_ends(rng)
+    ship.reduce_dead_ends()
     ends_2 = ship.dead_ends()
     picture_2 = []
     for r in range(ship.D):
@@ -107,23 +105,26 @@ def draw_danger_radius():
     plt.close()
 
 
-def burned_by_step(trial, steps):
-    """The tiles that are burning after the fire has spread `steps` times."""
-    fire_rng = reset_trial(trial)
+def burned_by_step(ship, fire_start, q, fire_seed, steps):
+    """The tiles that are burning after the fire has spread `steps` times
+    (the same fire the bots saw, because it starts from the same seed)."""
+    np.random.seed(fire_seed)
+    ship.clear()
+    ship.tile(fire_start).on_fire = True
     for t in range(steps):
-        spread_fire(trial.ship, trial.q, fire_rng)
-    return trial.ship.fire_cells()
+        spread_fire(ship, q)
+    return ship.fire_cells()
 
 
 def draw_trial(q, trial_number):
     """All four bots on one trial: walls black, open tiles white, the tiles
     that burned before the bot's run ended orange, and the bot's path in blue."""
-    trial = Trial(D, q, trial_rng(SEED, q, trial_number))
-    ship = trial.ship
+    ship, bot_start, button, fire_start = setup_trial(D, trial_number)
+    fire_seed = FIRE_SEED + trial_number
     plt.figure(figsize=(10, 10))
     for bot in [1, 2, 3, 4]:
-        result = run_bot(trial, bot)
-        burned = burned_by_step(trial, result["steps"])
+        result = run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed)
+        burned = burned_by_step(ship, fire_start, q, fire_seed, result["steps"])
         picture = []
         for r in range(ship.D):
             row = []
@@ -140,8 +141,8 @@ def draw_trial(q, trial_number):
         plt.imshow(picture)
         rows, cols = path_rows_and_columns(result["path"])
         plt.plot(cols, rows, color="blue")
-        plt.plot(trial.bot_start[1], trial.bot_start[0], "bo")          # where the bot starts
-        plt.plot(trial.button[1], trial.button[0], "g*", markersize=12)  # the button
+        plt.plot(bot_start[1], bot_start[0], "bo")          # where the bot starts
+        plt.plot(button[1], button[0], "g*", markersize=12)  # the button
         reason = result["reason"].replace("_", " ")
         plt.title(f"Bot {bot}: {reason} after {result['steps']} steps")
         plt.axis("off")
@@ -152,22 +153,23 @@ def draw_trial(q, trial_number):
 def draw_decision(q, trial_number):
     """Replays Bot 4 until the first move where its plan is longer than the
     shortest path that avoids the fire (Bot 2's choice), then draws that moment."""
-    trial = Trial(D, q, trial_rng(SEED, q, trial_number))
-    ship = trial.ship
-    fire_rng = reset_trial(trial)
-    pos = trial.bot_start
+    ship, bot_start, button, fire_start = setup_trial(D, trial_number)
+    np.random.seed(FIRE_SEED + trial_number)   # the same fire Bot 4 saw
+    ship.clear()
+    ship.tile(fire_start).on_fire = True
+    pos = bot_start
     move = 1
     while True:
-        plan = bot4_path(ship, pos, trial.button, q)
-        short = bot2_path(ship, pos, trial.button)
+        plan = bot4_path(ship, pos, button, q)
+        short = bot2_path(ship, pos, button)
         if len(plan) > len(short):
             break
         pos = plan[1]
-        spread_fire(ship, q, fire_rng)
+        spread_fire(ship, q)
         move += 1
 
     burning = ship.fire_cells()
-    danger = predicted_fire(ship, pos, trial.button, q, THRESHOLD)
+    danger = predicted_fire(ship, pos, button, q, THRESHOLD)
     short_flagged = 0
     for p in short[1:]:
         if p in danger:
@@ -201,7 +203,7 @@ def draw_decision(q, trial_number):
     rows, cols = path_rows_and_columns(plan)
     plt.plot(cols, rows, "b-")    # Bot 4's plan
     plt.plot(pos[1], pos[0], "bo")
-    plt.plot(trial.button[1], trial.button[0], "g*", markersize=15)
+    plt.plot(button[1], button[0], "g*", markersize=15)
 
     # Zoom in on the two paths and the fire.
     rows, cols = path_rows_and_columns(plan + short + list(burning))

@@ -30,11 +30,11 @@ grid), phase 1 leaves about 449 dead ends, and phase 2 cuts that to about 224.
 Following the TA's feedback, the update is synchronous: I first go over every
 cell and decide which ones catch fire, counting $K$ from the fire as it was at
 the start of the step, and only then set them all on fire, so a newly ignited
-cell can't spread the fire again in the same step. I draw exactly one random
-number per cell per update, in row order, even for walls and burning cells, so
-a given random generator always produces exactly the same fire. Each trial
-stores its generator, and every bot run on that trial starts the fire from a
-fresh copy, so all four bots face the identical fire progression. That makes
+cell can't spread the fire again in the same step. All the randomness comes
+from NumPy's random numbers, and the bots themselves never use any. So before
+each bot's run I reset the random numbers with the same seed
+(`np.random.seed`), and the fire spreads in exactly the same way for every bot
+on a trial: all four bots face the identical fire progression. That makes
 every comparison between bots a paired one, which turned out to be worth a lot
 of data (Section 2). I label every failure with its cause: the bot walked into
 fire, the fire spread onto the bot, the button burned before the bot got there,
@@ -181,8 +181,8 @@ Bot 2. The race asks the same question, "will this cell be on fire?", but at
 the time that matters, when the bot would actually get there. I tested the
 literal rule as a variant, and it did no better than Bot 2. Third,
 the fire can only spread through open cells, so $d(c)$ is measured through the
-maze rather than with the Manhattan distance (the Manhattan version was slightly
-worse in tuning, within the noise, and slower). My plan also said the heuristic
+maze rather than with the Manhattan distance, which would flag cells the fire
+can only reach the long way round. My plan also said the heuristic
 would be the Euclidean distance to the button; since the bot only moves up,
 down, left and right, the Manhattan distance is the exact cost on an open grid,
 it is still admissible, and because it is never smaller than the Euclidean
@@ -209,10 +209,8 @@ one comparison. The Manhattan heuristic keeps A\* searching
 towards the button instead of in every direction, as plain uniform cost search
 would. Trials stop as soon as the outcome is certain. Because every bot sees the
 same fire, comparisons are paired, which needs about 16 times fewer trials for
-the same precision on a difference. And trials run in parallel on every core,
-with each trial's random seed depending only on (seed, $q$, trial number), so
-the results don't depend on how the work is split up and any single trial can
-be replayed. Table 1 shows how long each bot spends deciding. A whole trial with
+the same precision on a difference. And each trial's random seed is just its
+trial number, so any single trial can be replayed exactly. Table 1 shows how long each bot spends deciding. A whole trial with
 all four bots takes about 0.3 s on one core of my laptop, so the 83,000 trials
 of the main run take under two hours on 4 cores.
 
@@ -226,8 +224,10 @@ of the main run take under two hours on 4 cores.
 
 ## 2. Experiments and results (Question 2)
 
-For the main experiment I used $D = 50$, which kept the full run to a couple
-of hours on four cores, and generated a fresh ship for every trial. I first ran
+For the main experiment I used $D = 50$, which kept the full run to several
+hours on my laptop. Trial number $i$ always uses seed $i$ for its ship and
+starting cells, so at every value of $q$ the bots face the same set of ships,
+and the only thing that changes along the curves is $q$ itself. I first ran
 1,000 trials at every $q$ from 0 to 1 in steps of 0.05. That showed that below
 $q \approx 0.1$ Bots 2-4 win about 98% of trials or more and are within a few
 tenths of a point of each other, and that above $q \approx 0.75$ all four bots
@@ -241,7 +241,7 @@ fire, I can measure the *difference* between two bots trial by trial: at
 $q = 0.4$, Bot 4 minus Bot 2 is $+1.6 \pm 0.5$ points paired, where two
 independent samples of the same size would give $\pm 2.0$. Matching that
 precision with independent samples would take about 16 times as many trials. I
-tuned Bot 4 on a separate set of trials with a different seed (Section 3), so
+tuned Bot 4 on a separate set of trials that the main run never uses (Section 3), so
 the main results were never used to choose its settings, and I spot-checked two
 other ship sizes.
 

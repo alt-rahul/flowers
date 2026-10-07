@@ -46,12 +46,11 @@ def test_bot3_falls_back_to_bot2():
 
 
 def test_bot3_avoids_the_tiles_next_to_the_fire_when_it_can():
-    rng = np.random.default_rng(0)
     for i in range(20):
-        ship = generate_ship(20, rng)
+        ship = generate_ship(20, i)
         cells = ship.open_cells()
-        picks = rng.choice(len(cells), size=3, replace=False)
-        start, button, fire = cells[picks[0]], cells[picks[1]], cells[picks[2]]
+        np.random.shuffle(cells)
+        start, button, fire = cells[0], cells[1], cells[2]
         start_fire(ship, [fire])
         buffer = {fire}
         for n in grid_neighbors(ship.D, fire[0], fire[1]):
@@ -89,31 +88,29 @@ def test_predicted_fire_is_not_a_fixed_buffer():
 def test_predicted_fire_is_exact_when_q_is_one():
     # At q = 1 the fire moves every step, so a tile is predicted fire exactly
     # when the fire is at most as far from it as the bot is.
-    rng = np.random.default_rng(3)
     for i in range(10):
-        ship = generate_ship(20, rng)
+        ship = generate_ship(20, 100 + i)
         cells = ship.open_cells()
-        picks = rng.choice(len(cells), size=2, replace=False)
-        start, fire = cells[picks[0]], cells[picks[1]]
+        np.random.shuffle(cells)
+        start, fire = cells[0], cells[1]
         start_fire(ship, [fire])
         danger = predicted_fire(ship, start, None, 1.0, 0.6)
         from_fire = distance_map(ship, [fire], set())
         from_bot = distance_map(ship, [start], {fire})
-        for r, c in cells:
+        for r, c in ship.open_cells():
             if (r, c) != fire and from_bot[r][c] != math.inf:
                 assert ((r, c) in danger) == (from_fire[r][c] <= from_bot[r][c])
 
 
 def test_bot4_without_a_penalty_takes_a_shortest_path():
-    rng = np.random.default_rng(4)
     for i in range(20):
-        ship = generate_ship(20, rng)
+        ship = generate_ship(20, 200 + i)
         cells = ship.open_cells()
-        picks = rng.choice(len(cells), size=3, replace=False)
-        start, button, fire = cells[picks[0]], cells[picks[1]], cells[picks[2]]
+        np.random.shuffle(cells)
+        start, button, fire = cells[0], cells[1], cells[2]
         start_fire(ship, [fire])
         for t in range(5):
-            spread_fire(ship, 0.3, rng)
+            spread_fire(ship, 0.3)
         if ship.tile(start).on_fire or ship.tile(button).on_fire:
             continue
         shortest = bot2_path(ship, start, button)
@@ -132,10 +129,10 @@ def test_race_model_matches_the_real_fire_on_a_corridor():
     ship = corridor()
     burning = {}   # burning[(t, d)] = in how many runs tile (0, d) was burning after t updates
     for run in range(runs):
-        rng = np.random.default_rng([11, run])
+        np.random.seed(run)
         start_fire(ship, [(0, 0)])
         for t in range(1, 16):
-            spread_fire(ship, q, rng)
+            spread_fire(ship, q)
             for d in [1, 3, 6, 10]:
                 if ship.tile((0, d)).on_fire:
                     if (t, d) not in burning:

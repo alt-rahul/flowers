@@ -1,76 +1,96 @@
-"""Runs all four bots on lots of random trials and saves one row per (trial, bot).
+"""Runs the bots on lots of random trials and saves the results as CSV files.
 
     python experiments.py
 
-Change the settings below for a different run. The main run took several
-hours on 4 cores.
+Trial number i uses seed i for the ship and the starting tiles, and seed
+FIRE_SEED + i for the fire. So any trial can be made again exactly, and every
+bot on a trial faces the same fire.
+
+It runs one trial after another and takes about an hour on a laptop.
 """
-import csv
-import gzip
-import time
-from multiprocessing import Pool
+import pandas as pd
 
-import numpy as np
+from simulation import is_certain_win, run_bot, setup_trial
 
-from simulation import Trial, is_certain_win, run_bot
-
-# Settings for the main run
-D = 50
-SEED = 440
-OUTPUT_FILE = "results/main.csv.gz"
-
-# 1,000 trials at every q from 0 to 1 in steps of 0.05, and 3,000 trials at
-# every q from 0.1 to 0.7 in steps of 0.025 (where the bots differ).
-TRIALS_PER_Q = {}
-for i in range(21):
-    TRIALS_PER_Q[round(0.05 * i, 6)] = 1000
-for i in range(25):
-    TRIALS_PER_Q[round(0.1 + 0.025 * i, 6)] = 3000
-
-# The ship-size run used the same seed with:
-#   D = 25:  2,000 trials at q = 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 and 0.8
-#   D = 100:   400 trials at the same q values
-# and saved to results/size.csv.gz.
+FIRE_SEED = 1000000   # added to the trial number to get the fire's seed
+COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms", "fireproof"]
 
 
-def trial_rng(seed, q, trial_number):
-    """The random generator for one trial. It only depends on the seed, q and
-    the trial number, so any trial can be made again later."""
-    return np.random.default_rng([seed, int(round(q * 1000000)), trial_number])
-
-
-def run_one_trial(D, seed, q, trial_number):
-    """Run every bot on one trial and return their rows for the CSV file."""
-    trial = Trial(D, q, trial_rng(seed, q, trial_number))
-    certain_win = is_certain_win(trial)
+def run_trial(D, q, trial):
+    """Bots 1 to 4 on one trial. Returns one row for each bot."""
+    ship, bot_start, button, fire_start = setup_trial(D, trial)
+    certain_win = is_certain_win(ship, bot_start, button, fire_start)
     rows = []
     for bot in [1, 2, 3, 4]:
-        result = run_bot(trial, bot)
-        rows.append([D, q, trial_number, f"bot{bot}", int(result["success"]), result["reason"],
-                     result["steps"], result["deviations"], round(result["ms"], 3), int(certain_win)])
+        result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial)
+        rows.append([D, q, trial, f"bot{bot}", int(result["success"]), result["reason"], result["steps"],
+                     result["deviations"], round(result["ms"], 3), int(certain_win)])
     return rows
 
 
+def main_run():
+    """D = 50, at every q from 0 to 1 in steps of 0.05: 1,000 trials where the
+    bots differ (q from 0.1 to 0.7) and 200 trials everywhere else."""
+    rows = []
+    for i in range(21):
+        q = round(0.05 * i, 2)
+        if q >= 0.1 and q <= 0.7:
+            trials = 1000
+        else:
+            trials = 200
+        print(f"Main run: q = {q}, {trials} trials")
+        for trial in range(trials):
+            for row in run_trial(50, q, trial):
+                rows.append(row)
+
+    results = pd.DataFrame(rows, columns=COLUMNS)
+    results.to_csv("results/main.csv", index=False)
+
+
+# The bots tried in tuning: (name, bot number, threshold, penalty, one_step)
+TUNING_BOTS = [
+    ("bot2", 2, 0.6, 20, False),
+    ("bot3", 3, 0.6, 20, False),
+    ("bot4 threshold=0.4 penalty=20", 4, 0.4, 20, False),
+    ("bot4 threshold=0.6 penalty=20", 4, 0.6, 20, False),
+    ("bot4 threshold=0.8 penalty=20", 4, 0.8, 20, False),
+    ("bot4 threshold=0.6 penalty=5", 4, 0.6, 5, False),
+    ("bot4 threshold=0.6 penalty=100", 4, 0.6, 100, False),
+    ("bot4 one-step rule", 4, 0.6, 20, True),
+]
+
+
+def run_tuning_trial(q, trial):
+    """Every bot in TUNING_BOTS on one trial. Returns one row for each."""
+    ship, bot_start, button, fire_start = setup_trial(50, trial)
+    certain_win = is_certain_win(ship, bot_start, button, fire_start)
+    rows = []
+    for name, bot, threshold, penalty, one_step in TUNING_BOTS:
+        result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial,
+                         threshold, penalty, one_step)
+        rows.append([50, q, trial, name, int(result["success"]), result["reason"], result["steps"],
+                     result["deviations"], round(result["ms"], 3), int(certain_win)])
+    return rows
+
+
+def tuning_run():
+    """Different Bot 4 settings, on trials 5000 to 5199 (the main run never
+    uses them), so choosing the settings didn't use the main results."""
+    rows = []
+    for q in [0.2, 0.3, 0.4, 0.5]:
+        print(f"Tuning run: q = {q}, 200 trials")
+        for trial in range(5000, 5200):
+            for row in run_tuning_trial(q, trial):
+                rows.append(row)
+
+    results = pd.DataFrame(rows, columns=COLUMNS)
+    results.to_csv("results/tuning.csv", index=False)
+
+
 def main():
-    jobs = []
-    for q in TRIALS_PER_Q:
-        for trial_number in range(TRIALS_PER_Q[q]):
-            jobs.append((D, SEED, q, trial_number))
-    print(f"Running {len(jobs)} trials...")
-    start = time.time()
-
-    # Run the trials on every core at once.
-    with Pool() as pool:
-        results = pool.starmap(run_one_trial, jobs)
-
-    with gzip.open(OUTPUT_FILE, "wt", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["D", "q", "trial", "bot", "success", "reason", "steps",
-                         "deviations", "ms", "fireproof"])
-        for rows in results:
-            for row in rows:
-                writer.writerow(row)
-    print(f"Done in {time.time() - start:.0f} seconds, saved to {OUTPUT_FILE}")
+    main_run()
+    tuning_run()
+    print("Finished succssfuly!")
 
 
 if __name__ == "__main__":

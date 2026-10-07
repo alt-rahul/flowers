@@ -105,10 +105,32 @@ def predicted_fire(ship, pos, button, q, threshold):
     return danger
 
 
-def bot4_path(ship, pos, button, q, threshold=THRESHOLD, penalty=PENALTY):
+def one_step_predicted_fire(ship, q, threshold):
+    """The literal "more than 60% chance of catching fire" rule, only used to
+    test it in tuning: a tile counts if it catches fire NEXT step with a chance
+    above the threshold. Only tiles next to the fire can ever count."""
+    danger = set()
+    for r, c in ship.open_cells():
+        tile = ship.grid[r][c]
+        if tile.on_fire:
+            continue
+        K = 0
+        for nr, nc in tile.neighbors:
+            if ship.grid[nr][nc].on_fire:
+                K += 1
+        if 1 - (1 - q) ** K > threshold:
+            danger.add((r, c))
+    return danger
+
+
+def bot4_path(ship, pos, button, q, threshold=THRESHOLD, penalty=PENALTY, one_step=False):
     """Bot 4: A* to the button, avoiding burning tiles and paying extra for
-    predicted-fire tiles."""
-    danger = predicted_fire(ship, pos, button, q, threshold)
+    predicted-fire tiles. one_step=True swaps the race for the literal
+    one-step rule (only used in tuning)."""
+    if one_step:
+        danger = one_step_predicted_fire(ship, q, threshold)
+    else:
+        danger = predicted_fire(ship, pos, button, q, threshold)
     cost = []
     for r in range(ship.D):
         row = []

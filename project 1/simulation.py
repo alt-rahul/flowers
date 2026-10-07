@@ -1,45 +1,37 @@
-"""Running one bot on one trial."""
-import copy
+"""Setting up a trial and running one bot on it."""
 import time
 
-from bots import bot1_path, bot2_path, bot3_path, bot4_path
+import numpy as np
+
+from bots import PENALTY, THRESHOLD, bot1_path, bot2_path, bot3_path, bot4_path
 from fire import spread_fire
 from search import distance_map, fireproof_path
 from ship import generate_ship
 
 
-class Trial:
-    """One setup: a ship, where the bot, the button and the first fire start,
-    and the random numbers the fire will use."""
-
-    def __init__(self, D, q, rng):
-        self.q = q
-        self.ship = generate_ship(D, rng)
-        cells = self.ship.open_cells()
-        picks = rng.choice(len(cells), size=3, replace=False)   # three different open tiles
-        self.bot_start = cells[picks[0]]
-        self.button = cells[picks[1]]
-        self.fire_start = cells[picks[2]]
-        # Save the random generator as it is now. Every run of this trial
-        # starts the fire from a copy of it, so every bot faces the same fire.
-        self.fire_rng = copy.deepcopy(rng)
+def setup_trial(D, seed):
+    """A random ship, and three different random open tiles for the bot, the
+    button and the first fire. The same seed always gives the same trial."""
+    ship = generate_ship(D, seed)
+    cells = ship.open_cells()
+    np.random.shuffle(cells)   # put the open tiles in a random order and take the first three
+    bot_start = cells[0]
+    button = cells[1]
+    fire_start = cells[2]
+    return ship, bot_start, button, fire_start
 
 
-def reset_trial(trial):
-    """Put the bot, the button and the first fire back where they start, with
-    nothing else burning. Returns a fresh copy of the fire's random generator."""
-    ship = trial.ship
-    ship.clear()
-    ship.tile(trial.bot_start).has_bot = True
-    ship.tile(trial.button).has_button = True
-    ship.tile(trial.fire_start).on_fire = True
-    return copy.deepcopy(trial.fire_rng)
+def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed,
+            threshold=THRESHOLD, penalty=PENALTY, one_step=False):
+    """Run Bot 1, 2, 3 or 4. Each time step, in order: the bot decides and
+    moves; if it is on the button it wins; otherwise the fire spreads, and the
+    bot fails if the fire reaches it or the button.
 
+    The fire only uses random numbers, and the bots never do. So starting the
+    random numbers from the same fire_seed gives exactly the same fire, which
+    is how every bot on a trial faces the same fire.
 
-def run_bot(trial, bot):
-    """Run Bot 1, 2, 3 or 4 on a trial. Each time step, in order:
-    the bot decides and moves; if it is on the button it wins; otherwise the
-    fire spreads, and the bot fails if the fire reaches it or the button.
+    threshold, penalty and one_step only matter for Bot 4 (see bots.py).
 
     Returns a dictionary with:
         success     True if the button was pressed
@@ -49,10 +41,13 @@ def run_bot(trial, bot):
         deviations  moves Bot 2's rule could not have made
         ms          time spent deciding, in milliseconds
     """
-    ship = trial.ship
-    button = trial.button
-    fire_rng = reset_trial(trial)
-    pos = trial.bot_start
+    np.random.seed(fire_seed)
+    ship.clear()
+    ship.tile(bot_start).has_bot = True
+    ship.tile(button).has_button = True
+    ship.tile(fire_start).on_fire = True
+
+    pos = bot_start
     path = [pos]
     plan = None
     deviations = 0
@@ -71,7 +66,7 @@ def run_bot(trial, bot):
         elif bot == 3:
             plan = bot3_path(ship, pos, button)
         else:
-            plan = bot4_path(ship, pos, button, trial.q)
+            plan = bot4_path(ship, pos, button, q, threshold, penalty, one_step)
         think_time += time.perf_counter() - start
 
         if plan is None:
@@ -103,7 +98,7 @@ def run_bot(trial, bot):
             break
 
         # 3. The fire spreads.
-        spread_fire(ship, trial.q, fire_rng)
+        spread_fire(ship, q)
         if ship.tile(pos).on_fire:
             reason = "caught"
             break
@@ -121,8 +116,8 @@ def run_bot(trial, bot):
     }
 
 
-def is_certain_win(trial):
+def is_certain_win(ship, bot_start, button, fire_start):
     """True if the bot has a path that even the fastest possible fire (q = 1)
     can't catch, so it is going to win whatever happens. Two BFSs, no simulation."""
-    fire_dist = distance_map(trial.ship, [trial.fire_start], set())
-    return fireproof_path(trial.ship, trial.bot_start, trial.button, fire_dist) is not None
+    fire_dist = distance_map(ship, [fire_start], set())
+    return fireproof_path(ship, bot_start, button, fire_dist) is not None

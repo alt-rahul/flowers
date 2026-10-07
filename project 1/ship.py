@@ -3,6 +3,7 @@
 A position is a (row, col) tuple, and ship.grid[r][c] is the tile at row r,
 column c.
 """
+import numpy as np
 
 
 class Tile:
@@ -26,13 +27,6 @@ def grid_neighbors(D, r, c):
     if c < D - 1:
         neighbors.append((r, c + 1))
     return neighbors
-
-
-def remove_from_list(items, item):
-    """Remove item from the list by moving the last item into its place."""
-    i = items.index(item)
-    items[i] = items[-1]
-    items.pop()
 
 
 class Ship:
@@ -84,17 +78,17 @@ class Ship:
                     ends.append((r, c))
         return ends
 
-    def grow_maze(self, rng):
+    def generate_blocks(self):
         """Phase 1: open a random interior tile, then keep opening a random
         blocked tile that has exactly one open neighbour until there are none."""
         candidates = []   # blocked tiles with exactly one open neighbour
 
-        r, c = rng.integers(1, self.D - 1, size=2)   # rows and columns 1 to D-2
-        r, c = int(r), int(c)
+        r = np.random.randint(1, self.D - 1)   # a random row from 1 to D-2
+        c = np.random.randint(1, self.D - 1)   # a random column from 1 to D-2
         while True:
             self.grid[r][c].is_open = True
             if (r, c) in candidates:
-                remove_from_list(candidates, (r, c))
+                candidates.remove((r, c))
 
             # Opening (r, c) only changes the tiles next to it.
             for nr, nc in grid_neighbors(self.D, r, c):
@@ -103,24 +97,24 @@ class Ship:
                     if count == 1:
                         candidates.append((nr, nc))
                     elif count == 2:
-                        remove_from_list(candidates, (nr, nc))
+                        candidates.remove((nr, nc))
 
             if len(candidates) == 0:
                 break
-            r, c = candidates[rng.integers(len(candidates))]
+            r, c = candidates[np.random.randint(len(candidates))]
 
-    def reduce_dead_ends(self, rng):
+    def reduce_dead_ends(self):
         """Phase 2: open a random blocked tile next to a random dead end, until
         at most half of the original dead ends are left."""
         ends = self.dead_ends()
         target = len(ends) / 2
         while len(ends) > target:
-            r, c = ends[rng.integers(len(ends))]
+            r, c = ends[np.random.randint(len(ends))]
             blocked = []
             for nr, nc in grid_neighbors(self.D, r, c):
                 if not self.grid[nr][nc].is_open:
                     blocked.append((nr, nc))
-            nr, nc = blocked[rng.integers(len(blocked))]
+            nr, nc = blocked[np.random.randint(len(blocked))]
             self.grid[nr][nc].is_open = True
             ends = self.dead_ends()
 
@@ -145,10 +139,12 @@ class Ship:
                 tile.has_button = False
 
 
-def generate_ship(D, rng):
+def generate_ship(D, seed):
+    """A random D x D ship. The same seed always gives the same ship."""
+    np.random.seed(seed)
     ship = Ship(D)
-    ship.grow_maze(rng)
-    ship.reduce_dead_ends(rng)
+    ship.generate_blocks()
+    ship.reduce_dead_ends()
     ship.find_neighbors()
     return ship
 

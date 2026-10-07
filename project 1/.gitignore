@@ -1,4 +1,2 @@
 __pycache__/
 .pytest_cache/
-# Raw experiment results are saved gzipped (results/*.csv.gz).
-results/*.csv

@@ -23,21 +23,27 @@ Each file is one step, in the order things happen:
 
 ## Running it
 
-Needs Python 3 with `numpy` and `matplotlib` (and `pytest` for the tests).
-Run everything from this folder:
+Needs Python 3 with `numpy`, `pandas` and `matplotlib` (and `pytest` for the
+tests). Run everything from this folder:
 
 ```bash
 cd "project 1"
-python -m pytest          # 30 tests
-python experiments.py     # the main run (settings at the top of the file)
+python -m pytest          # the tests
+python experiments.py     # all the experiments (about an hour)
 python analysis.py        # tables (results/summary.md) and charts (plots/)
 python pictures.py        # the other pictures in plots/
 ```
 
-`experiments.py` overwrites `results/main.csv.gz`, and the main run takes
-under two hours on 4 cores, so you only need it to make the data again. The
-settings are written at the top of each script: for example `D`, `SEED` and
-`TRIALS_PER_Q` in `experiments.py`, and the trials to draw in `pictures.py`.
+`experiments.py` runs one trial after another and writes the two results
+files, so you only need it to make the data again. The settings are written in
+each function (for example the q values and how many trials at each).
+
+## Random numbers
+
+Everything random uses `np.random`. `np.random.seed(i)` before building trial
+number `i` means the same trial number always gives the same ship and the same
+starting tiles. The fire uses `np.random.seed(1000000 + i)`, set again at the
+start of every bot's run, so every bot on a trial faces exactly the same fire.
 
 ## The results
 
@@ -46,7 +52,7 @@ Every row of a results file is one bot on one trial:
 | Column | Meaning |
 |---|---|
 | `D`, `q`, `trial` | which trial (ship size, flammability, trial number); together they make the trial again exactly |
-| `bot` | `bot1` to `bot4` |
+| `bot` | `bot1` to `bot4` (in the tuning file, also the Bot 4 settings tried) |
 | `success` | 1 if the button was pressed |
 | `reason` | `success`, `entered_fire`, `caught`, `button_burned` or `trapped` (cut off from the button) |
 | `steps` | how many moves the bot made |
@@ -54,20 +60,12 @@ Every row of a results file is one bot on one trial:
 | `ms` | time spent deciding, in milliseconds |
 | `fireproof` | 1 if the trial was a certain win from the start |
 
-- `results/main.csv.gz`: the main run, 83,000 trials at D = 50 (seed 440).
-- `results/size.csv.gz`: the same bots at D = 25 and D = 100 (seed 440).
-- `results/tuning.csv.gz`: the Bot 4 settings tried before the main run, on
-  4,000 separate trials (seed 7). These were run with an earlier version of
-  the code that could switch Bot 4's settings and two variants (the literal
-  one-step 60% rule, and Manhattan distance for the fire); that version is in
-  the git history.
+- `results/main.csv`: the main run at D = 50: every q from 0 to 1 in steps of
+  0.05, with 1,000 trials at each q from 0.1 to 0.7 and 200 elsewhere.
+- `results/tuning.csv`: Bot 2, Bot 3 and different Bot 4 settings on 800
+  separate trials (trial numbers 5000 to 5199, which the main run never uses).
 - `results/summary.md` and the pictures in `plots/` are made from those by
   `analysis.py` and `pictures.py`.
-
-The code was simplified several times after the main run. Each time, sampled
-trials were run again and compared with the saved rows, and they matched
-exactly (most recently 1,336 of 1,336 rows across D = 25, 50 and 100), so the
-saved results are the results of this code.
 
 ## Differences from the original plan
 
