@@ -1,20 +1,18 @@
 """Run bots on many random ships and fires; write one CSV row per (trial, bot).
 
-Every bot is run on the same trials (same ship, same start cells and the same
-fire realisation), so differences between bots are paired comparisons. Each
-trial also records:
-  oracle_success  could a clairvoyant bot have won? (upper bound on any bot;
-                  separates avoidable from unavoidable failures)
-  fireproof       was the trial a certain win from the start? (some path stays
-                  ahead of even the fastest possible fire)
-and each (trial, bot) row records:
+Every bot is run on the same trials (same ship, same start tiles and the same
+fire), so differences between bots are paired comparisons. Each row records:
+  success, reason, steps   how the bot did (see simulation.py for the reasons)
   deviations      moves Bot 2's rule could not have made
   ms              time spent inside the bot's own code (deciding, not simulating)
+  fireproof       was the trial a certain win from the start? (some path stays
+                  ahead of even the fastest possible fire; the same for every
+                  bot on a trial)
 
 Examples:
     python experiments.py --D 50 --q 0:1:0.05 --trials 1000 --out results/coarse.csv
     python experiments.py --D 50 --q 0.3,0.4 --trials 500 \
-        --bots bot3 bot4:risk_weight=3 bot4:risk_weight=30 --out results/tune.csv
+        --bots bot2 bot3 bot4 bot4:threshold=0.4 bot4:penalty=5 --out results/tune.csv
 """
 import argparse
 import csv
@@ -25,11 +23,10 @@ from multiprocessing import Pool
 import numpy as np
 
 from bots import make_bot
-from simulation import Trial, oracle_steps, run_bot
+from simulation import Trial, run_bot
 
 FIELDS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms",
-          "oracle_success", "oracle_steps", "fireproof",
-          "bot_to_button", "fire_to_button", "fire_to_bot"]
+          "fireproof"]
 
 
 def parse_qs(text):
@@ -52,18 +49,7 @@ def run_chunk(job):
     rows = []
     for i in indices:
         trial = Trial.generate(D, q, trial_rng(seed, q, i))
-        ship = trial.ship
-        from_button = ship.distances_from(trial.button)
-        best = oracle_steps(trial)
-        common = {
-            "D": D, "q": q, "trial": i,
-            "oracle_success": int(best is not None),
-            "oracle_steps": "" if best is None else best,
-            "fireproof": int(trial.fireproof()),
-            "bot_to_button": from_button[trial.bot_start],
-            "fire_to_button": from_button[trial.fire_start],
-            "fire_to_bot": ship.distances_from(trial.fire_start)[trial.bot_start],
-        }
+        common = {"D": D, "q": q, "trial": i, "fireproof": int(trial.fireproof())}
         for spec in specs:
             out = run_bot(trial, make_bot(spec), count_deviations=True)
             # "ms" is time spent deciding (inside the bot), not simulating.

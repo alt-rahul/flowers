@@ -2,9 +2,8 @@
 
 A bot on a randomly generated D x D ship has to reach the fire-suppression
 button before the fire spreading through the ship gets to it (or to the
-button). This directory has the ship generator, the fire model, Bots 1-4, a
-clairvoyant upper bound used for the failure analysis, and the experiment,
-analysis and visualisation scripts.
+button). This directory has the ship generator, the fire model, Bots 1-4, and
+the experiment, analysis and visualisation scripts.
 
 ## Running it
 
@@ -15,9 +14,10 @@ Developed and tested on Python 3.13.
 cd "project 1"
 pip install numpy matplotlib pytest
 
-python -m pytest                                   # 123 tests, a few seconds
+python -m pytest                                   # 105 tests, about 15 seconds
 
-# Experiments: one CSV row per (trial, bot); uses every core.
+# Experiments: one CSV row per (trial, bot); uses every core
+# (about 0.7 s per trial per core at D = 50, all four bots).
 python experiments.py --D 50 --q 0:1:0.05 --trials 1000 --out results/main.csv
 python analyze.py results/main.csv.gz --out results --bots bot1 bot2 bot3 bot4
 
@@ -25,66 +25,75 @@ python analyze.py results/main.csv.gz --out results --bots bot1 bot2 bot3 bot4
 python visualize.py --D 50 --q 0.3 --trial 17 --out trial17.png
 python visualize.py --D 50 --q 0.3 --where bot3=0 bot4=1 --bots bot3 bot4 --out case.png
 
-# One of Bot 4's decisions: burning and predicted-fire cells, its plan, and Bot 2's
+# One of Bot 4's decisions: burning and predicted-fire tiles, its plan, and Bot 2's
 python decision.py --D 50 --q 0.3 --trial 463 --out decision.png
-
-# How well Bot 4's fire prediction matches the real fire
-python forecast_check.py --out results/forecast_calibration.png
-
-# Bad luck or bad decision? Replay trials Bot 4 lost but Bot 3 won, under 40 fresh fires each
-python replay_check.py results/main.csv.gz --lost bot4 --won bot3 --bots bot2 bot3 bot4
 ```
 
 Bots are named by spec strings, so variants can be compared in one run:
 `bot4:threshold=0.5`, `bot4:penalty=50`, `bot4:lookahead=false`,
-`bot4:fire_metric=manhattan`, and `bot4_forecast` (the earlier Bot 4).
+`bot4:fire_metric=manhattan`.
 
 ## Files
 
 | File | What it does |
 |---|---|
-| `ship.py` | Ship generation (both phases from the spec) and the `Ship` class. No fire/bot code, so it can be reused in later projects. |
-| `fire.py` | The spread rule and `FireTrajectory`, one fire realisation per trial. |
-| `planning.py` | The search algorithms: BFS, A*, the Manhattan heuristic, distance maps, the certain-win check, and the (cell, time) search of the earlier Bot 4. |
+| `ship.py` | The ship as a 2D grid of `Tile` objects (`ship.grid[r][c]`), and its generation (both phases from the spec). No fire/bot code, so it can be reused in later projects. |
+| `fire.py` | The spread rule: `spread_fire` updates the tiles' `on_fire` flags once per time step. |
+| `planning.py` | The search algorithms, written from the lecture pseudocode: BFS, A*, the Manhattan heuristic, distance maps, the certain-win check. |
 | `planners.py` | One function per way of choosing a path. Each bot is one of these plus "replan every step or not". Bot 4's race model lives here. |
 | `bots.py` | The single `Bot` class and the table saying how Bots 1-4 are built. |
-| `forecast.py` | The probabilistic fire forecasts used by the earlier Bot 4 (message passing, and the naive mean-field version). |
-| `simulation.py` | Runs a bot on a trial in the order the spec gives (and counts moves Bot 2 couldn't have made); clairvoyant upper bound. |
+| `simulation.py` | Runs a bot on a trial in the order the spec gives, moving the bot and spreading the fire on the tiles (and counts moves Bot 2 couldn't have made). |
 | `experiments.py` | Parallel, reproducible parameter sweeps that write CSVs. |
 | `analyze.py` | Success rates with 95% CIs, paired bot comparisons, failure breakdowns, charts. |
 | `visualize.py` | Draws what each bot did on one trial. |
 | `decision.py` | Draws one of Bot 4's real decisions: what it predicted, its plan, and the shortest path it turned down. |
-| `forecast_check.py` | Calibration of the fire predictions against Monte Carlo runs of the real fire. |
-| `replay_check.py` | Reruns the starting configurations of chosen trials under many fresh fires, to tell bad luck from bad decisions. |
 | `tests/` | Unit tests (see "Correctness checks"). |
 | `results/` | Data and charts from the runs described below. |
 
 ## Design
 
 ### Ship
-`generate_layout` follows the spec exactly. Phase 1 (`grow_maze`) opens a
-random interior cell, then repeatedly opens a random blocked cell with exactly
-one open neighbour. Phase 2 (`reduce_dead_ends`) opens a random closed
-neighbour of a random dead end until at most half of the original dead ends
-remain. Phase 1 keeps the set of candidate cells up to date incrementally
-(opening a cell only changes its 4 neighbours' counts), so it is O(D^2)
-instead of rescanning the grid every iteration (O(D^4)). Only the first open
-cell has to be in the interior; later cells may be on the edge of the grid.
+As in the original plan, the ship is a D x D grid of `Tile` objects:
+`ship.grid[r][c]` is the tile at row r, column c, and a position is a
+`(row, col)` tuple. (This README says "cell" and "tile" interchangeably.)
+Each tile tracks:
+
+| Attribute | Meaning |
+|---|---|
+| `is_open` | open floor, or wall |
+| `on_fire` | burning right now |
+| `has_bot` | the bot is standing here |
+| `has_button` | the button is here |
+| `neighbors` | positions of the open tiles next to it (up, down, left, right) |
+
+Walls never change after generation, so each tile's list of open neighbours
+is filled in once, and every search simply walks `tile.neighbors`.
+
+`Ship.generate` follows the spec exactly. Phase 1 (`grow_maze`) opens a
+random interior tile, then repeatedly opens a random wall with exactly one
+open neighbour. Phase 2 (`reduce_dead_ends`) opens a random wall next to a
+random dead end until at most half of the original dead ends remain. Phase 1
+keeps its list of candidate walls up to date as it goes (opening a tile only
+changes its 4 neighbours' counts), so it is O(D^2) instead of rescanning the
+grid every iteration (O(D^4)); phase 2 likewise only rechecks the tiles
+around each opening. Only the first open tile has to be in the interior;
+later tiles may be on the edge of the grid.
 
 ### Fire
-Each step every non-burning open cell ignites with probability
+Each step every open tile that isn't burning catches fire with probability
 $1 - (1 - q)^K$, where $K$ is its number of burning neighbours. As the TA
-feedback asked, the update is **synchronous**: $K$ is counted from the fire as
-it was at the start of the step, and newly ignited cells are only added
-afterwards, so they cannot spread fire in the same step
-(`fire.fire_step`; `test_update_is_synchronous` checks this). The whole update
-is a handful of numpy operations on the grid.
+feedback asked, the update is **synchronous**: `fire.spread_fire` first goes
+over every tile and collects the ones that catch fire, counting $K$ from the
+fire as it was at the start of the step, and only then sets them on fire. So
+a tile that catches fire can't spread it in the same step
+(`test_update_is_synchronous` checks this).
 
-The fire does not react to the bot, so `FireTrajectory` simulates it once per
-trial (lazily, only as far as anyone needs) and records each cell's ignition
-time. All the bots and the clairvoyant bound then face the **same** fire on
-each trial, which makes bot comparisons paired and much less noisy. Bots only
-ever see the cells burning at the current time step.
+The fire does not react to the bot. So every run of a trial starts the
+fire's random number generator from the same point (`Trial.start` hands each
+run a fresh copy of it), and all the bots face the **same** fire, as the
+instructor's guidance suggests ("run both bots against the same fire
+progression"). That makes bot comparisons paired and much less noisy. Bots
+only ever see the tiles as they are at the current time step.
 
 ### Time step and outcomes
 `simulation.run_bot` follows the spec's order: the bot picks a move, moves,
@@ -119,9 +128,36 @@ is never avoided. The button is avoided like any other cell, so a button
 next to the fire means Bot 3 falls back to Bot 2's rule.
 
 All planners have the same signature,
-`planner(ship, pos, button, burning, q, **options)`, so a new bot is one
-line in the `BOTS` table, and variants are spec strings such as
-`bot4:threshold=0.5,penalty=50`.
+`planner(ship, pos, button, q, **options)`, and read the fire from the tiles
+(`ship.fire_cells()`). So a new bot is one line in the `BOTS` table, and
+variants are spec strings such as `bot4:threshold=0.5,penalty=50`.
+
+### Searches (`planning.py`, from the lecture notes)
+
+The searches follow the pseudocode from lecture and use its names: a
+`fringe` of states still to explore, a `closed_set` of states already
+explored, and `prev[child]` = the state the child was reached from, with
+`prev[start] = None`. Following `prev` back from the goal rebuilds the path.
+A state is a tile position `(row, col)`.
+
+- **BFS** (`bfs_path`) is GraphSearch with a queue as the fringe, so the
+  oldest state comes off first and the first time the goal comes off, it is
+  along a shortest path. "Restricted states" are the tiles the bot must
+  avoid (the fire for Bots 1 and 2; the fire and its neighbours for Bot 3).
+  One addition to the notes: a child that is already in `prev` is already
+  on the fringe, so it isn't added a second time. Every tile is then on the
+  fringe at most once and keeps the first tile it was reached from.
+- **A\*** (`astar_path`) is uniform cost search with
+  $\text{priority}(n) = f(n) = g(n) + h(n)$, as in the notes: `dist[n]` is
+  $g(n)$, the cheapest cost found so far from the start, `dist_to_child =
+  dist[curr] + cost(curr, child)`, and a child is added or updated when it
+  is new or `dist_to_child < dist[child]`. Like the notes' A*, there is no
+  closed list. Python's `heapq` has no "add or update", so an updated child
+  is simply added again; its old copy has a higher priority, and when it
+  comes off later it changes nothing.
+- `bfs_distances` and `fire_distances` are the same BFS with no goal, run
+  until the fringe is empty to get the distance to every tile
+  (`fire_distances` starts with every burning tile on the fringe at once).
 
 ### Bot 4: avoid the fire that will probably get there first
 
@@ -153,8 +189,9 @@ threshold $\theta$ (0.6 by default).
 
 Bot 4 doesn't evaluate the sum for every cell. $P(A_k \ge d)$ only gets
 smaller as $d$ grows, so `danger_radius` computes once per $q$, for each
-$k$, the largest fire distance that still counts as dangerous. The check per
-cell is then one comparison: $d(c) \le \text{radius}[k(c)]$.
+$k$, the largest fire distance that still counts as dangerous, and keeps the
+table in a dictionary so it is only built once. The check per cell is then
+one comparison: $d(c) \le \text{radius}[k(c)]$.
 
 **The search.** A* from the bot to the button, where entering a cell $c$
 costs
@@ -168,10 +205,12 @@ w(c) = \begin{cases}
 $$
 
 with penalty $\lambda = 20$ by default. The heuristic is the Manhattan
-distance to the button, $h(c) = |r_c - r_g| + |c_c - c_g|$. Walls can only
-make a route longer and every step costs at least 1, so $h$ never
-overestimates and A* returns the cheapest path. Bot 4 takes the plan's first
-step, then does it all again with the new fire.
+distance to the button, $h(c) = |r_c - r_g| + |c_c - c_g|$. It is the cost
+of a relaxed problem (the same grid with the walls removed), so it is
+admissible: $h(c) \le C^*(c, G)$. It is also consistent, since every step
+costs at least 1 and $h$ changes by at most 1 per step:
+$h(n) \le C^*(n, n') + h(n')$. So A* returns the cheapest path. Bot 4 takes
+the plan's first step, then does it all again with the new fire.
 
 ```
 each step, given pos, burning, q:
@@ -216,21 +255,17 @@ over *all* routes, and the race model only counts one shortest route. So:
   only make the real fire faster. The true probability is never lower than
   the model's: the model is a **slightly optimistic lower bound**.
 
-`forecast_check.py` measures the gap against 400 Monte Carlo runs of the
-real fire on 10 ships per q. The race model is 1-6 points optimistic. The
-earlier Bot 4's message-passing forecast is about as far off, in the
-pessimistic direction, and the naive forecast it replaced was 13-32 points
-too pessimistic:
-
-![Fire predictions vs the real fire](results/forecast_calibration.png)
+Both points are checked in `tests/test_planning.py` against simulated fires
+(a corridor, where the model should be exact, and a real ship, where it
+should never predict more fire than really comes).
 
 **Known limitation: $k(c)$ is the bot's shortest distance, not its arrival
 time on the plan.** On a detour, the bot reaches cells (and the button)
 later than $k(c)$, so they are more dangerous than the model thinks.
 Detours therefore look safer than they are. That is what loses q = 0.85,
-trial 96 under Results, and it is the main reason the new Bot 4 trails the
-earlier one. Fixing it means searching over (cell, time) pairs instead of
-cells, which is exactly what the earlier Bot 4 did.
+trial 96 under Results. Fixing it would mean searching over (cell, time)
+pairs instead of cells, so that each cell is scored at the step the plan
+actually reaches it.
 
 **Where the design came from, and what changed.** The brief was: A* with a
 Manhattan-distance heuristic between the fire and the bot; burning cells
@@ -260,61 +295,46 @@ formalising it:
 
 **Assumption:** Bot 4 knows q, the ship's flammability.
 
-### The earlier Bot 4 (kept as `bot4_forecast`)
+### Efficiency
 
-Before the current design, Bot 4 was more ambitious. It is still in the
-code (`planners.forecast_astar`), and its results on the same trials are in
-the comparison under Results.
+The code is written to be easy to follow first: a grid of `Tile` objects,
+`(row, col)` positions, sets and plain loops. Within that, these choices keep
+it fast enough for large experiments:
 
-1. **Certain-win check first.** If some path stays ahead of even the
-   fastest possible fire (see "Certain wins"), take it.
-2. **Otherwise, forecast the fire.** Dynamic message passing
-   (`forecast.MessagePassingForecast`) gives $p_t(c)$, the chance that cell
-   $c$ is burning $t$ steps from now, for every cell and every future step.
-3. **Search over (cell, time) pairs.** A* where entering cell $c$ on move
-   $t$ costs $1 + w \cdot r_t(c)$, with $r_t(c) = -\ln(1 - p_t(c))$ and
-   $w = 1000$ (`planning.risk_astar`). Because the cost depends on *when*
-   the bot arrives, a detour pays for being slow.
-
-It came within half a point of the clairvoyant bound, but it was hard to
-explain next to Bot 3, about twice as slow as the current Bot 4, and its
-summed risk was a ranking score rather than a probability (it adds up
-correlated risks as if they were independent). The current Bot 4 keeps its
-core idea, comparing when the bot and the fire each get to a cell, with a
-closed-form race and a plain A* over cells. The race model and message
-passing agree exactly on a corridor (`test_race_model_is_exact_on_a_corridor`).
-
-### Efficiency: what made 83,000 trials × 4 bots affordable
-
-- **Ship generation is O(D^2).** Phase 1 keeps its candidate cells in a list
-  plus an index map instead of rescanning the grid every iteration (O(D^4)).
-- **The fire is vectorised.** One update is a handful of whole-grid numpy
-  operations (shifted views count burning neighbours) instead of a Python
-  loop over cells.
-- **One fire per trial, shared and lazy.** The fire never reacts to the bot,
-  so it is simulated once per trial, only as far as anyone needs, and
-  replayed for every bot and the clairvoyant bound.
+- **Ship generation is O(D^2).** Phase 1 keeps its candidate walls in a list
+  plus a dictionary of their positions in it, instead of rescanning the grid
+  every iteration (O(D^4)). Phase 2 only rechecks the tiles around each
+  opening instead of recounting every dead end.
+- **Each tile's open neighbours are worked out once**, since walls never
+  change.
 - **Trials stop as soon as the outcome is certain** (button burned, or every
   route cut off).
-- **Planners use flat integer cell ids and Python lists**, not tuples or
-  numpy scalars, inside BFS and A*.
-- **Bot 4** costs two BFSs, one pass over the cells and one A* per move.
+- **Every bot replays the same fire** from the same random generator state,
+  so comparisons are paired: they need about 16x fewer trials than
+  independent samples for the same precision on a difference.
+- **Bot 4** costs two BFSs, one pass over the tiles and one A* per move.
   The binomial tail is never summed during a trial: `danger_radius` turns
-  it into a lookup table once per (q, θ) and caches it, so each cell's check
-  is one comparison. The Manhattan heuristic keeps A* focused on the button.
+  it into a lookup table once per (q, θ) and keeps it in a dictionary, so
+  each tile's check is one comparison. The Manhattan heuristic keeps A*
+  focused on the button.
 - **Trials run in parallel** on every core. Each trial's seed depends only on
   (seed, q, trial index), so results don't depend on how work is split up.
-- **Paired comparisons** (all bots on the same fire) need about 11x fewer
-  trials than independent samples for the same precision on a difference.
 
-### Clairvoyant upper bound
-`simulation.oracle_steps` asks whether *any* sequence of moves could have
-won, given the entire future of that trial's fire. It is a BFS in which a
-cell can be entered on move k only if it is not burning after k fire updates.
-Because the fire only grows, arriving anywhere as early as possible is
-always best, so each cell is visited once. This bounds every possible bot,
-and it splits each failure into **avoidable** (some sequence of moves would
-have won) and **unavoidable**.
+At D = 50 a trial takes about 0.7 s per core for all four bots plus the
+certain-win check, so the 83,000-trial main run takes several hours on 4
+cores.
+
+**How the results below were produced.** The experiments were run with an
+earlier version of this same code that stored the grid as flat numpy arrays
+(2-3 times faster). The `Tile` version was then checked against those
+results: rerunning 825 of the trials (25 at each of the 33 values of q) gave
+identical rows for every bot (3,300 of 3,300), with the same outcome,
+reason, number of steps, departures from Bot 2's rule and certain-win flag.
+After BFS and A* were rewritten to follow the lecture pseudocode, 495 more
+trials (15 at each q) were rerun: again identical (1,980 of 1,980 rows).
+The ship generator gives identical ships from the same seeds. Only the
+timing column differs. (The stored CSVs also had a few columns for analyses
+that are no longer part of this project; those were dropped.)
 
 ### Certain wins (the instructor's data-collection hint)
 `Trial.fireproof()` asks, before simulating anything, whether the bot has a
@@ -328,15 +348,10 @@ moves at most one cell per step whatever q is, so:
    moves) (`planning.fireproof_path`).
 
 If such a path exists, the trial is a certain win for any bot that takes
-it. This doesn't depend on q at all, which is why success levels off at
-about 52% as q approaches 1: at q = 1 the fire really is that fast, so
-"certain win" and "clairvoyant bot wins" coincide exactly (tested). The
-experiments record it for every trial.
-
-It also splits the trials three ways: **certain** from the start, **impossible**
-(not even the clairvoyant bot wins), and **contested** (everything else).
-Only contested trials can separate good decisions from bad ones, so that is
-where bot comparisons are sharpest.
+it (tested: a bot that follows this path wins against the real fire at every
+q). This doesn't depend on q at all, which is why success levels off at
+about 52% as q approaches 1: at q = 1 the fire really is that fast, and only
+the certain wins are left. The experiments record it for every trial.
 
 ### Do the bots actually decide differently?
 A move is one Bot 2 could have made if it steps along *some* shortest path to
@@ -346,84 +361,82 @@ tested). This is independent of how ties between equally short paths are
 broken, so a nonzero count means the bot really made a different kind of
 decision. The experiments record the count for every bot and trial.
 
-## How Bot 4 got here (development log)
+## How Bot 4 got here (process)
 
-1. **First version.** Risk-aware A* over (cell, time) with a naive
-   mean-field fire forecast. Risk weight tuned on a separate set of trials.
-2. **Calibration check.** The forecast was 13-32 points too pessimistic.
-   Switched to message passing (1-7 points off).
-3. **First full run (83,000 trials).** Bot 4 beat Bots 1-3 throughout
-   q = 0.1-0.7.
-4. **Instructor's hint: certain wins.** About half of all trials turned out
+1. **First version.** Bot 4 started out more ambitious: a step-by-step
+   forecast of the fire and an A* over (cell, time) pairs. It worked, but
+   it was hard to explain clearly next to Bot 3, and slow.
+2. **Instructor's hint: certain wins.** About half of all trials turned out
    to be certain wins at every q, and every bot won every one of them. That
-   explains the plateau near 52% at high q, and it pointed at contested
-   trials as the place to compare bots.
-5. **Does Bot 4 just copy Bot 2?** Mostly, but its departures from Bot 2's
-   rule won far more often than they lost; Bot 3's were close to a coin
-   flip.
-6. **Bad decisions at low q** led to re-tuning the risk weight (to 1000) and
-   adding the certain-win check to the bot. That version came within 0.5
-   points of the clairvoyant bound at every q.
-7. **Simplified.** That Bot 4 was much more complex than Bot 3 and hard to
-   explain, so it was replaced by the design above: the same "who gets there
-   first" question, answered by a closed-form race and a plain A* over cells.
-   At the same time the bots became one `Bot` class with interchangeable
-   planner functions, and Bots 2 and 3 now literally rerun their BFS every
-   step.
-8. **Tuning round 3 on held-out trials** (below): kept θ = 0.6 and
-   λ = 20. Lower thresholds were no better within the noise, and the
-   penalty hardly mattered between 5 and 1000.
-9. **Final run.** Bots 1-3 reproduced the previous run exactly, outcome and
-   step count, on all 83,000 trials, so the refactor changed no behaviour.
-   The earlier Bot 4's rows were kept as `bot4_forecast` after checking that
-   the kept code reproduces them (120 of 120 sampled trials identical).
+   explains why success levels off near 52% at high q.
+3. **Does Bot 4 just copy Bot 2?** Counting the moves Bot 2's rule could not
+   make showed that it mostly does, but its departures win far more often
+   than they lose (see Results).
+4. **Simplified.** Bot 4 was replaced by the design above: the same "who
+   gets there first" question, answered by a closed-form race and a plain A*
+   over cells. At the same time the bots became one `Bot` class with
+   interchangeable planner functions, and Bots 2 and 3 literally rerun their
+   BFS every step.
+5. **Tuning on held-out trials** (below): kept θ = 0.6 and λ = 20.
+6. **Final run** of all four bots on 83,000 trials.
+7. **Back to the original plan's grid, and the lecture pseudocode.** The code
+   was rewritten around a 2D grid of `Tile` objects with `(row, col)`
+   positions, as the plan specified, and BFS and A* were rewritten to follow
+   the lecture notes. Neither change altered a single result (see
+   "Efficiency").
 
 ## Deviations from the original plan
 
-1. **No `Tile` objects.** The plan stored the ship as a 2D array of `Tile`
-   objects. The code holds the same information in numpy arrays and integers
-   instead: `ship.grid` (open/blocked), the fire's burning mask and ignition
-   times, and the bot and button as flat cell indices. The fire update and
-   the "next to the fire" test then become a few whole-grid numpy
-   operations, and the planners work on plain ints, which is what made tens
-   of thousands of trials per bot affordable. A `Tile` view would be easy to
-   add on top for later projects, but it would be slow in the inner loops.
-2. **Bot 4's details differ from the brief** in the three ways listed under
+The ship is stored as the plan describes: a 2D grid of `Tile` objects,
+each tracking whether it is open and whether it currently holds the bot, the
+button or fire, with the fire updated from neighbouring tiles every step.
+
+1. **Bot 4's details differ from the brief** in the three ways listed under
    "Where the design came from": Manhattan distance to the button as the
    heuristic, the race model instead of the one-step 60% rule, and maze
    distance for the fire.
-3. **Additions that were not in the plan:** a fire realisation shared by all
-   bots on each trial (paired comparisons), the clairvoyant bound, the
-   certain-win check, the deviation count, early stopping once failure is
-   certain, the calibration check, and the replay check for bad luck vs bad
-   decisions.
-4. The directory is named `project 1` (with a space) as requested, so quote
+2. **The plan's heuristic was the Euclidean distance to the button.** A*
+   uses the Manhattan distance instead: the bot can only move up, down, left
+   and right, so the Manhattan distance is the exact cost on a grid without
+   walls. It is still admissible and never smaller than the Euclidean
+   distance, so it guides the search better.
+3. **BFS differs from the notes' GraphSearch in one line:** a child that is
+   already on the fringe is not added again (see "Searches").
+4. **Additions that were not in the plan**, each from the instructor's
+   guidance: the same fire for every bot on each trial ("run both bots
+   against the same fire progression"), the certain-win check (the
+   data-collection hint) and the count of moves Bot 2 couldn't have made
+   ("are there situations where your bots make different decisions?"). Also
+   early stopping once failure is certain, which changes no result.
+5. The directory is named `project 1` (with a space) as requested, so quote
    it in shells: `cd "project 1"`.
 
 ## Correctness checks (`tests/`)
-- Ship: phase 1 yields a tree with no cell left to open; phase 2 at least
-  halves the dead ends and only opens cells; every open cell is reachable;
-  generation is reproducible.
-- Fire: synchronous update, ignition frequency matches $1 - (1 - q)^K$, no
-  spread at q = 0, fire stays on open cells.
+- Ship: phase 1 yields a tree with no tile left to open; phase 2 at least
+  halves the dead ends and only opens tiles; every open tile is reachable;
+  generation is reproducible; each tile's neighbour list is right;
+  `clear()` removes the bot, button and fire.
+- Fire: synchronous update, catch frequency matches $1 - (1 - q)^K$, no
+  spread at q = 0, fire stays on open tiles, the same generator state gives
+  the same fire.
 - Search: BFS paths are valid and shortest; A* with unit costs finds
-  shortest paths; A* with mixed costs matches plain Dijkstra; the Manhattan
-  heuristic never overestimates.
+  shortest paths; A* with mixed costs matches plain uniform cost search; the
+  Manhattan heuristic never overestimates.
 - Race model: `danger_radius` agrees with the binomial formula for every
-  (k, d); the race model equals the exact message-passing forecast on a
-  corridor; at q = 1 a cell is predicted fire exactly when the fire is at
-  most as far from it as the bot; predicted fire is not a fixed buffer
-  (a corridor where moving the bot changes which cells are flagged).
+  (k, d); it matches simulated fires on a corridor; it never predicts more
+  fire than simulated fires produce on a real ship; at q = 1 a cell is
+  predicted fire exactly when the fire is at most as far from it as the
+  bot; predicted fire is not a fixed buffer (a corridor where moving the bot
+  changes which cells are flagged); the one-step rule only flags tiles next
+  to the fire.
 - Bots: Bot 1 plans once; Bot 2 never deviates from its own rule; Bot 3
   avoids the buffer when it can and falls back to Bot 2's planner when it
-  can't; Bot 4 with no penalty never leaves Bot 2's rule; no bot ever beats
-  the clairvoyant bound and only Bot 1 walks into fire; with q = 0 every bot
-  wins whenever winning is possible.
-- Certain wins: at q = 1 "certain win" agrees exactly with the clairvoyant
-  bot; certain-win trials are always winnable.
-- The earlier Bot 4: its (cell, time) A* matches an unpruned brute force;
-  both forecasts are exact when q = 1; forecast probabilities are valid and
-  only grow; it wins every certain-win trial.
+  can't; Bot 4 with no penalty never leaves Bot 2's rule; every run makes one
+  legal move per step and only Bot 1 walks into fire; with q = 0 every bot
+  wins whenever winning is possible; every run of a trial sees the same
+  fire; a trial from the main run reproduces its recorded outcomes.
+- Certain wins: a bot that follows the fireproof path always wins, at every
+  q.
 
 ## Results
 
@@ -433,16 +446,13 @@ decision. The experiments record the count for every bot and trial.
 |---|---|---|---|---|
 | Main, whole range | 50 | 0 to 1 in steps of 0.05 | 1,000 | overall picture |
 | Main, interesting range | 50 | 0.1 to 0.7 in steps of 0.025 | 3,000 | where the bots differ |
-| Bot 4 tuning, round 3 | 50 | 0.05-0.6 | 500 (separate seed) | threshold, penalty, variants |
+| Bot 4 tuning | 50 | 0.05-0.6 | 500 (separate seed) | threshold, penalty, variants |
 | Ship size | 25 and 100 | 0.1 to 0.8 | 2,000 and 400 | how much D matters |
 
 The main run is 83,000 trials, each on a freshly generated ship. On every
-trial all the bots, the clairvoyant bound and the certain-win check face
-the same ship, start cells and fire. Seeds come from (seed, q, trial index),
-so any row can be replayed with `visualize.py`. Raw data:
-`results/main.csv.gz` (it includes the earlier Bot 4 as `bot4_forecast`);
-every table: `results/summary.md`, and with the earlier Bot 4:
-`results/bot4_versions/summary.md`.
+trial all the bots face the same ship, start cells and fire. Seeds come from
+(seed, q, trial index), so any row can be replayed with `visualize.py`. Raw
+data: `results/main.csv.gz`; every table: `results/summary.md`.
 
 **How much data is enough.** 3,000 trials per q in the interesting range
 give 95% CIs of about ±1.6 points on each success rate. More importantly,
@@ -453,18 +463,21 @@ Matching the paired precision with independent samples would take about 16
 times as many trials.
 
 **How the interesting range was found.** A first pass over the whole range
-showed that below q ≈ 0.1 Bots 2-4 win nearly every winnable trial, and
-above q ≈ 0.75 every bot is within a point of the clairvoyant bound. The
-extra trials went to the range in between.
+showed that below q ≈ 0.1 Bots 2-4 win about 98% or more of the trials and
+are within a few tenths of a point of each other, and above q ≈ 0.75 all
+four bots are within a point of each other. The extra trials went to the
+range in between.
 
 ### The centerpiece: success rate against q
 
 ![Success rate and Bot 4's advantage](results/centerpiece.png)
 
+The dashed line is the share of trials that are certain wins from the start
+(next section): no bot ever loses one of those, so no bot can fall below it.
+
 - **Equally good (q near 0).** At q = 0 every bot wins 100%. Up to
-  q ≈ 0.2, Bots 2-4 are within about half a point of each other and win
-  98-100% of the trials a clairvoyant bot could win. Bot 1 is the
-  exception: it never replans, so even a slow fire that creeps onto its
+  q ≈ 0.2, Bots 2-4 are within about half a point of each other. Bot 1 is
+  the exception: it never replans, so even a slow fire that creeps onto its
   path kills it (96.7% at q = 0.05).
 - **Bot 4 ahead (q = 0.225 to 0.675, shaded).** Here Bot 4 beats both Bot 2
   and Bot 3 with 95% confidence at 17 of the 19 tested q values (at 0.25
@@ -472,25 +485,23 @@ extra trials went to the range in between.
   +1.8 ± 0.5 points over Bot 2 and +1.2 ± 0.5 over Bot 3 (q = 0.45), and is
   +3 to +5 points over Bot 1 for q = 0.125-0.4.
 - **Equally bad (q ≥ 0.8).** All four bots are within 0.6 points of each
-  other and of the clairvoyant bound. At q = 1 every bot wins exactly the
-  51.7% of trials that are certain wins (next section): the fire is as fast
-  as the bot, so the start decides everything.
-- Bot 4 is within 1.7 points of the clairvoyant bound at every q (Bot 3:
-  2.7, Bot 2: 3.3, Bot 1: 6.0). The earlier Bot 4 was within 0.5.
+  other. At q = 1 every bot wins exactly the 51.7% of trials that are
+  certain wins: the fire is as fast as the bot, so the start decides
+  everything.
 
-| q | Bot 1 | Bot 2 | Bot 3 | Bot 4 | Clairvoyant bound | Earlier Bot 4 |
-|---|---|---|---|---|---|---|
-| 0 | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
-| 0.1 | 94.9% | 98.1% | 98.2% | 98.1% | 98.5% | 98.5% |
-| 0.2 | 89.4% | 93.1% | 93.4% | 93.3% | 94.8% | 94.4% |
-| 0.3 | 83.1% | 86.6% | 87.0% | 87.4% | 88.6% | 88.5% |
-| 0.4 | 77.3% | 79.3% | 79.9% | 80.9% | 81.8% | 81.5% |
-| 0.5 | 74.0% | 74.8% | 75.3% | 75.8% | 76.9% | 76.6% |
-| 0.6 | 67.3% | 67.6% | 67.6% | 68.4% | 69.4% | 69.0% |
-| 0.7 | 61.0% | 61.2% | 61.1% | 61.5% | 62.1% | 62.0% |
-| 0.8 | 56.2% | 56.3% | 56.2% | 56.3% | 56.6% | 56.5% |
-| 0.9 | 50.8% | 50.8% | 50.8% | 50.6% | 51.0% | 50.9% |
-| 1 | 51.7% | 51.7% | 51.7% | 51.7% | 51.7% | 51.7% |
+| q | Bot 1 | Bot 2 | Bot 3 | Bot 4 | Certain wins |
+|---|---|---|---|---|---|
+| 0 | 100.0% | 100.0% | 100.0% | 100.0% | 47.8% |
+| 0.1 | 94.9% | 98.1% | 98.2% | 98.1% | 49.7% |
+| 0.2 | 89.4% | 93.1% | 93.4% | 93.3% | 49.5% |
+| 0.3 | 83.1% | 86.6% | 87.0% | 87.4% | 48.9% |
+| 0.4 | 77.3% | 79.3% | 79.9% | 80.9% | 50.5% |
+| 0.5 | 74.0% | 74.8% | 75.3% | 75.8% | 51.8% |
+| 0.6 | 67.3% | 67.6% | 67.6% | 68.4% | 49.5% |
+| 0.7 | 61.0% | 61.2% | 61.1% | 61.5% | 49.2% |
+| 0.8 | 56.2% | 56.3% | 56.2% | 56.3% | 49.5% |
+| 0.9 | 50.8% | 50.8% | 50.8% | 50.6% | 47.3% |
+| 1 | 51.7% | 51.7% | 51.7% | 51.7% | 51.7% |
 
 **Where Bot 4 does not outperform.** At q ≤ 0.2, Bot 4 ties Bots 2 and 3
 (Bot 3 is up to 0.3 points ahead at q = 0.05-0.15, within the noise). A slow
@@ -503,28 +514,16 @@ Bot 4 is 0.1-0.4 points behind the others (within the noise: over all
 q ≥ 0.8 it lost 15 trials Bot 2 won and won 8 Bot 2 lost), from detours that
 look safe but aren't (q = 0.85, trial 96 below).
 
-### Which trials can a bot's decisions change?
-
-![Trial types](results/trial_types.png)
+### Certain wins (the hint)
 
 About half of all trials (47-52%) are certain wins at *every* q, decided by
-two BFSs before the fire moves at all. Every bot won every one of them
-(41,283 of 41,283 for each bot), so as the instructor's hint suggests, a
-data-collection run could count them as wins without simulating them. We
-simulated them anyway, to confirm that empirically: none of the bots is
-built to look for a fireproof path. As q grows, contested trials (winnable,
-but only by deciding well) turn into impossible ones, and by q ≥ 0.8 fewer
-than 8% of trials are contested. That is why the bots converge at both
-ends: at low q nearly everything is won, and at high q almost nothing is
-left to decide.
-
-### Success on contested trials only
-
-![Success on contested trials](results/success_contested.png)
-
-Restricted to the trials where decisions matter, the gap is large. For
-q = 0.3-0.7, Bot 4 wins 92-97% of contested trials, Bots 2 and 3 88-96%,
-and Bot 1 84-92%. (The earlier Bot 4: 98-99.6%.)
+two BFSs before the fire moves at all (the dashed line above). Every bot won
+every one of them (41,283 of 41,283 for each bot), so as the instructor's
+hint suggests, a data-collection run could count them as wins without
+simulating them. We simulated them anyway, to confirm it: none of the bots
+is built to look for a fireproof path. Only the other half of the trials can
+separate the bots, which is why their differences look small in the
+success-rate chart.
 
 ### Does Bot 4 decide differently from Bot 2?
 
@@ -536,14 +535,12 @@ and Bot 1 84-92%. (The earlier Bot 4: 98-99.6%.)
 | Bot 3 | no | 74,301 | 75 | 0 |
 | Bot 4 | yes | 9,060 (10.9%) | 698 | 197 |
 | Bot 4 | no | 73,940 | 233 | 50 |
-| Earlier Bot 4 | yes | 7,751 (9.3%) | 1,102 | 38 |
 
 Bot 4 makes exactly Bot 2's kind of move in about 89% of trials. When it
 chooses differently, it wins 3.5 times as often as it loses against Bot 2.
 Bot 3 departs about as often, but its departures only help 1.6 times as
 often as they hurt: its buffer is a fixed rule that ignores whether the
-detour is worth it. (The earlier Bot 4's departures won 29 times as often as
-they lost.) Bot 4 also departs much less than Bot 3 at low q (1% vs 3.5% of
+detour is worth it. Bot 4 also departs much less than Bot 3 at low q (1% vs 3.5% of
 trials at q = 0.1), which is the low-q weakness above seen from another
 angle. Bot 4's 233 wins (and 50 losses) without ever leaving Bot 2's rule
 come from choosing among several equally short paths: the penalty steers it
@@ -560,7 +557,7 @@ region is not a band of fixed width. Two cells 4 steps from the fire are
 treated differently: (43, 40), which the bot would reach in 15 moves, is
 flagged, and (40, 41), which it could reach in 11, is not. At q = 0.3 the
 fire advances 4 cells within 15 steps more than 60% of the time, but not
-within 11. Bot 4 won in 27 steps, the clairvoyant optimum. Bot 2 kept to
+within 11. Bot 4 won in 27 steps. Bot 2 kept to
 the short route and was trapped after 24 steps; Bot 3 also detoured, on a
 different route, and was cut off after 28.
 
@@ -572,16 +569,12 @@ different route, and was cut off after 28.
 
 Pooled over every q (`results/summary.md`):
 
-| Bot | Walked into fire | Fire spread onto bot | Button burned first | Cut off from button | Avoidable |
-|---|---|---|---|---|---|
-| Bot 1 | 40% | 25% | 36% | 0% | 16% |
-| Bot 2 | 0% | 14% | 40% | 45% | 9% |
-| Bot 3 | 0% | 5% | 45% | 50% | 7% |
-| Bot 4 | 0% | 7% | 46% | 47% | 5% |
-| Earlier Bot 4 | 0% | 9% | 44% | 46% | 1% |
-
-("Avoidable" is the share of that bot's failures where the clairvoyant bot
-could have won.)
+| Bot | Walked into fire | Fire spread onto bot | Button burned first | Cut off from button |
+|---|---|---|---|---|
+| Bot 1 | 40% | 25% | 36% | 0% |
+| Bot 2 | 0% | 14% | 40% | 45% |
+| Bot 3 | 0% | 5% | 45% | 50% |
+| Bot 4 | 0% | 7% | 46% | 47% |
 
 - **Bot 1** dies most often by walking into fire: it never looks again
   after planning.
@@ -589,9 +582,24 @@ could have won.)
   heads down routes the fire is about to close.
 - **Bot 3's** buffer cuts "fire spread onto bot" to 5% of failures, but the
   detours cost time, so more of its failures are a burned button.
-- **Bot 4** sits between Bots 2 and 3 on "fire spread onto bot" (7%), and
-  only 5% of its failures were avoidable even with perfect knowledge of the
-  future.
+- **Bot 4** sits between Bots 2 and 3 on "fire spread onto bot" (7%).
+
+**Was there a better decision?** Because every bot faces the same fire, a
+trial that one bot lost and another won shows directly that a different
+sequence of moves would have saved the loser. That is true for 13.5% of Bot
+1's failures, 6.1% of Bot 2's, 4.8% of Bot 3's and 2.3% of Bot 4's. For the
+rest, none of the four strategies found a way out. Head to head, Bot 4 lost
+312 trials that Bot 3 won and won 754 that Bot 3 lost (247 and 931 against
+Bot 2). Its losses sort by q:
+
+| q | Bot 4 lost, Bot 3 won | Bot 4 won, Bot 3 lost | Bot 4 lost, Bot 2 won | Bot 4 won, Bot 2 lost |
+|---|---|---|---|---|
+| 0 to 0.2 | 69 | 56 | 27 | 68 |
+| 0.225 to 0.7 | 229 | 687 | 203 | 848 |
+| 0.75 to 1 | 14 | 11 | 17 | 15 |
+
+At low q, Bot 3's buffer is the better decision more often than Bot 4's;
+at high q the two kinds of loss are about even.
 
 Two of Bot 4's losses, one for each weakness:
 
@@ -600,11 +608,9 @@ Two of Bot 4's losses, one for each weakness:
   cells on it are 20%, 4%, 49% and 18% likely to be reached by the fire
   first: each one under the 60% threshold, so none is predicted fire, and
   Bots 2 and 4 both take the short route. They are caught on the very
-  first step. Bot 3 keeps one cell away and wins in 64, the clairvoyant
-  optimum. This isn't bad luck: replayed
-  under 40 fresh fires, Bot 3 wins 97% of them from this start and Bot 4
-  62%. A threshold looks at one cell at a time, so several moderate risks in
-  a row never add up to a reason to detour.
+  first step. Bot 3 keeps one cell away and wins in 64. A threshold looks at
+  one cell at a time, so several moderate risks in a row never add up to a
+  reason to detour.
   ![trial 2252](results/examples/q0.2_trial2252.png)
 - **q = 0.85, trial 96.** At move 21 the button is 5 steps away, but one cell
   on the way is predicted fire. Bot 4 picks a 17-step detour instead (cost
@@ -612,40 +618,9 @@ Two of Bot 4's losses, one for each weakness:
   distance to them, so the model doesn't see that the bot will reach the
   button 12 steps later than it could. The fire, spreading at q = 0.85,
   catches the bot after 23 steps. Bots 2 and 3 went straight and won in
-  25, the clairvoyant optimum. This is the "Known limitation" from the
-  design section.
+  25. This is the "Known limitation" from the design section.
   ![Bot 4 decision, trial 96](results/examples/decision_q0.85_trial96.png)
   ![trial 96](results/examples/q0.85_trial96.png)
-
-### Bad luck or bad decision? (`replay_check.py`)
-
-A single lost trial can't tell bad luck from a bad decision. So for every
-trial where Bot 4 lost but Bot 2 or Bot 3 won, the same ship and starting
-cells were replayed under 40 fresh fires (`results/replay_bot4_vs_bot*.txt`):
-
-| Trials where Bot 4 lost but... | Starts | Mean win rate from those starts | Bot 4 better / worse / same |
-|---|---|---|---|
-| Bot 3 won | 312 | Bot 4 64.1%, Bot 3 68.1%, Bot 2 63.4% | 67 / 195 / 50 |
-| Bot 2 won | 247 | Bot 4 51.9%, Bot 2 54.3%, Bot 3 53.3% | 70 / 138 / 39 |
-
-These starts were picked *because* the other bot won, so they favour it. If
-Bot 4's losses were just bad luck, the replays would still show Bot 4 ahead.
-That is what happened with the earlier Bot 4: from the starts it lost to
-Bot 3, it still did better 42 times and worse 5. For the new Bot 4 it mostly
-doesn't happen, so many of these losses are genuinely worse decisions. They
-are a small minority (Bot 4 lost 312 trials that Bot 3 won, and won 754 that
-Bot 3 lost), and they sort by q:
-
-- **q ≤ 0.2 against Bot 3** (69 starts): Bot 4 does worse from 51, better
-  from 8. This is the low-q weakness: when the fire is slow, Bot 3's buffer
-  is the better decision (trial 2252 above). Against Bot 2 at low q it is a
-  coin flip (10 better, 9 worse): there the two bots make the same choice,
-  and those losses were luck.
-- **q ≥ 0.8** (12 and 15 starts): Bot 4 does worse from almost all of them.
-  This is the detour problem (trial 96 above). At q = 0.8, trial 53, Bot 2
-  wins 93% of fresh fires from the same start and Bot 4 42%.
-- **In between**, Bot 4 does worse from about twice as many of these starts
-  as it does better.
 
 Two changes would target these losses and keep the design simple:
 
@@ -653,47 +628,25 @@ Two changes would target these losses and keep the design simple:
   threshold, so small risks cost a little instead of nothing.
 - Scoring each cell by the step at which the plan actually reaches it,
   instead of the bot's shortest distance to it. That needs a search over
-  (cell, time), which is what the earlier Bot 4 did and why it was
-  stronger.
-
-### Bot 4 vs the earlier Bot 4
-
-![Bot 4 versions](results/bot4_versions/bot4_versions.png)
-
-On the same 83,000 trials, the new Bot 4 is 0.3-1.3 points behind the
-earlier one at every q from 0.05 to 0.7 (significantly at most of them).
-Pooled, the earlier one won 695 trials the new one lost, and the new one
-won 64 the earlier one lost. Pooled over all trials it recovers about half
-of the earlier Bot 4's lead over Bot 2 (+0.8 of +1.6 points). In exchange, it is a few lines of
-closed-form probability and one A* over cells, about twice as fast (1.8 ms
-per move vs 3.7 ms), and easy to explain. The losses concentrate where the
-known limitation bites: detours scored with the bot's shortest distance
-instead of its real arrival time, and small risks below the threshold
-being ignored entirely.
-
-| | Bot 2 | Bot 3 | Bot 4 | Earlier Bot 4 |
-|---|---|---|---|---|
-| Success, pooled over the 83,000 trials | 78.6% | 78.9% | 79.5% | 80.2% |
-| Failures avoidable with perfect knowledge | 9% | 7% | 5% | 1% |
-| Contested trials won, q = 0.3-0.7 | 88-95% | 88-96% | 92-97% | 98-99.6% |
-| Thinking time per move | 0.17 ms | 0.20 ms | 1.8 ms | 3.7 ms |
+  (cell, time) pairs.
 
 ### Ship size
 
-A spot check at D = 25 (2,000 trials per q) and D = 100 (400 trials per q,
-so roughly ±4 points on success rates and ±1-2 on paired differences), next
-to the main D = 50 run (`results/size.csv.gz`; per-size tables in
-`results/size/`):
+The spec asks for data on as large a ship as is feasible. D = 50 is what
+the main run could afford at 83,000 trials. A spot check at D = 25 (2,000
+trials per q) and D = 100 (400 trials per q, so roughly ±4 points on
+success rates and ±1-2 on paired differences) shows whether the size
+matters (`results/size.csv.gz`; per-size tables in `results/size/`):
 
-| q | D = 25: Bot 4 (bound) | D = 50: Bot 4 (bound) | D = 100: Bot 4 (bound) |
+| q | D = 25: Bot 4 | D = 50: Bot 4 | D = 100: Bot 4 |
 |---|---|---|---|
-| 0.1 | 96.0% (96.7%) | 98.1% (98.5%) | 97.8% (98.2%) |
-| 0.2 | 91.0% (91.8%) | 93.3% (94.8%) | 93.2% (93.8%) |
-| 0.3 | 84.6% (85.8%) | 87.4% (88.6%) | 89.8% (90.5%) |
-| 0.4 | 77.6% (78.8%) | 80.9% (81.8%) | 80.0% (81.0%) |
-| 0.5 | 73.8% (75.0%) | 75.8% (76.9%) | 76.0% (77.2%) |
-| 0.6 | 65.8% (66.6%) | 68.4% (69.4%) | 71.2% (71.5%) |
-| 0.8 | 55.9% (56.8%) | 56.3% (56.6%) | 59.5% (59.5%) |
+| 0.1 | 96.0% | 98.1% | 97.8% |
+| 0.2 | 91.0% | 93.3% | 93.2% |
+| 0.3 | 84.6% | 87.4% | 89.8% |
+| 0.4 | 77.6% | 80.9% | 80.0% |
+| 0.5 | 73.8% | 75.8% | 76.0% |
+| 0.6 | 65.8% | 68.4% | 71.2% |
+| 0.8 | 55.9% | 56.3% | 59.5% |
 
 Bot 4 minus Bot 3, paired, in points:
 
@@ -711,30 +664,29 @@ Success at a given q rises somewhat with ship size. The pattern holds at
 every size: about 50% of trials are certain wins; Bot 4 ties Bot 3 at
 q = 0.1 and leads it by 0.4-1.1 points for q = 0.3-0.6 at D = 25 and 50 (at
 D = 100 the estimates are positive but too noisy to be significant on their
-own); and Bot 4 trails the earlier Bot 4 by up to 1.1 points (tables in
-`results/size/`). So the D = 50 conclusions don't look like an artefact of
+own). So the D = 50 conclusions don't look like an artefact of
 the ship size. Bot 4's thinking time grows steeply with D, since each move
 costs O(D^2) and trials get longer: about 9 ms, 67 ms and 1.1 s per trial at
-D = 25, 50 and 100 (q = 0.3, timed separately on an idle machine).
+D = 25, 50 and 100 (q = 0.3, array-based version, timed on an idle
+machine; this code takes about 1.8 times as long).
 
 ### Bot 4 tuning (held-out trials)
 
 All tuning used a separate seed (7), so the main results were never used to
 choose settings. 500 trials at each of q = 0.05, 0.1, 0.15, 0.2, 0.3, 0.4,
-0.5, 0.6 (4,000 trials; `results/tuning/round3/`). "Avoidable" is the share
-of failures the clairvoyant bot would have won; the last column is the
-paired difference from the chosen setting.
+0.5, 0.6 (4,000 trials; `results/tuning.csv.gz`, tables in
+`results/tuning/`). The last column is the paired difference from the
+chosen setting, in points.
 
-| Bot | Success (pooled) | Avoidable | Contested won | vs chosen setting |
-|---|---|---|---|---|
-| Bot 2 | 86.35% | 13.6% | 95.3% | -1.03 ± 0.38 |
-| Bot 3 | 86.67% | 11.4% | 96.1% | -0.70 ± 0.34 |
-| Bot 4, θ = 0.4, λ = 5 / 20 / 100 | 87.55% / 87.38% / 87.33% | 5.2% / 6.5% / 6.9% | 98.3% / 97.9% / 97.8% | +0.18 ± 0.18 / 0.00 ± 0.20 / -0.05 ± 0.21 |
-| **Bot 4, θ = 0.6, λ = 5 / 20 / 100 / 1000** | 87.35% / **87.38%** / 87.35% / 87.35% | 6.7% / **6.5%** / 6.7% / 6.7% | 97.8% / **97.9%** / 97.8% / 97.8% | -0.03 ± 0.20 / chosen / -0.03 ± 0.05 / -0.03 ± 0.05 |
-| Bot 4, θ = 0.8, λ = 5 / 20 / 100 | 87.02% / 87.10% / 87.08% | 9.1% / 8.5% / 8.7% | 97.0% / 97.2% / 97.1% | -0.35 ± 0.28 / -0.27 ± 0.25 / -0.30 ± 0.25 |
-| Bot 4, one-step rule (`lookahead=false`) | 86.42% | 13.1% | 95.5% | -0.95 ± 0.36 |
-| Bot 4, Manhattan fire distance | 87.22% | 7.6% | 97.5% | -0.15 ± 0.23 |
-| Earlier Bot 4 (round 2, same trials, w = 1000, no certain-win check) | 88.00% | 1.7% | 99.5% | +0.62 ± 0.28 |
+| Bot | Success (pooled) | vs chosen setting |
+|---|---|---|
+| Bot 2 | 86.35% | -1.03 ± 0.38 |
+| Bot 3 | 86.67% | -0.70 ± 0.34 |
+| Bot 4, θ = 0.4, λ = 5 / 20 / 100 | 87.55% / 87.38% / 87.33% | +0.18 ± 0.18 / 0.00 ± 0.20 / -0.05 ± 0.21 |
+| **Bot 4, θ = 0.6, λ = 5 / 20 / 100 / 1000** | 87.35% / **87.38%** / 87.35% / 87.35% | -0.03 ± 0.20 / chosen / -0.03 ± 0.05 / -0.03 ± 0.05 |
+| Bot 4, θ = 0.8, λ = 5 / 20 / 100 | 87.02% / 87.10% / 87.08% | -0.35 ± 0.28 / -0.27 ± 0.25 / -0.30 ± 0.25 |
+| Bot 4, one-step rule (`lookahead=false`) | 86.42% | -0.95 ± 0.36 |
+| Bot 4, Manhattan fire distance | 87.22% | -0.15 ± 0.23 |
 
 - The **look-ahead is what matters**: the literal one-step rule is no
   better than Bot 2, as predicted in the design section.
@@ -746,23 +698,28 @@ paired difference from the chosen setting.
 - Measuring the fire's distance through the maze is slightly better than
   the Manhattan distance, and cheaper.
 
-Rounds 1 and 2 tuned the earlier Bot 4 (`results/tuning/round1/`,
-`round2/`): the risk weight mattered little between 30 and 1000, and the
-calibrated forecast beat the naive one.
-
 ### Thinking time
 
-Mean time spent inside each bot's own code, D = 50, one core:
+Mean time spent inside each bot's own code, D = 50. This code was timed on
+175 trials (25 at each q from 0.1 to 0.7, four trials at a time on 4
+cores); the array-based version's times are from the full main run (the
+`ms` column of `results/main.csv.gz`):
 
-| | Bot 1 | Bot 2 | Bot 3 | Bot 4 | Earlier Bot 4 |
-|---|---|---|---|---|---|
-| per move | 9 µs | 170 µs | 202 µs | 1.8 ms | 3.7 ms |
-| per trial | 0.3 ms | 6.3 ms | 7.6 ms | 67 ms | 140 ms |
+| | Bot 1 | Bot 2 | Bot 3 | Bot 4 |
+|---|---|---|---|---|
+| per move, this code | 23 µs | 514 µs | 584 µs | 3.0 ms |
+| per trial, this code | 0.8 ms | 20 ms | 23 ms | 120 ms |
+| per move, array version | 9 µs | 170 µs | 202 µs | 1.8 ms |
+| per trial, array version | 0.3 ms | 6.3 ms | 7.6 ms | 67 ms |
 
 Bots 2 and 3 rerun one BFS every step. Bot 4 runs two BFSs, scores every
-cell and runs A*, about 10 times the work of Bot 2 per move, all of it
-plain Python over lists of cells. (The earlier Bot 4's times are from the
-previous run, on the same kind of machine.)
+tile and runs A*, about 6 times the work of Bot 2 per move. Bot 4's
+`danger_radius` table (about 0.5 s per q) is built once per process and not
+included above. This code is 1.7-3 times slower than the array version, the
+price of keeping the plan's grid of objects and `(row, col)` positions and
+the lecture's form of BFS (which checks for the goal when it comes off the
+fringe, so it explores a little more than one that stops as soon as the goal
+is found); it makes exactly the same decisions.
 
 ### Where each part of the writeup is supported
 
@@ -770,14 +727,14 @@ previous run, on the same kind of machine.)
 |---|---|
 | Centerpiece: q vs success, all bots on one graph | `results/centerpiece.png`, success table |
 | Enough data for clear trends | "What was run", paired vs independent CIs |
-| Range where all bots are equally good / equally bad | Centerpiece bullets, `trial_types.png` |
-| "There, that's where Bot 4 outperforms" | Shaded band in the centerpiece, `success_contested.png`, "Where Bot 4 does not outperform" |
-| The hint: telling immediately that a bot will win | "Certain wins" (Design), `trial_types.png`, 41,283 of 41,283 |
+| Range where all bots are equally good / equally bad | Centerpiece bullets and the dashed certain-win line |
+| "There, that's where Bot 4 outperforms" | Shaded band in the centerpiece, "Where Bot 4 does not outperform" |
+| The hint: telling immediately that a bot will win | "Certain wins" (Design and Results), 41,283 of 41,283 |
 | Q1: Bot 4's design and decisions | Bot 4 section (formal definition, pseudocode), decision figures |
 | Q1: why it isn't Bot 3 with a wider buffer | "Why this is not Bot 3 with a wider buffer", the one-step rule in tuning |
 | Q1: efficiency | "Efficiency" (Design), thinking time |
 | Q2: experiments and graphs | "What was run", centerpiece, size check |
-| Q3: why bots fail, better decisions? | "Why bots fail", the two Bot 4 losses, replay check, known limitation |
+| Q3: why bots fail, better decisions? | "Why bots fail", "Was there a better decision?", the two Bot 4 losses, known limitation |
 | Does Bot 4 decide differently from Bot 2? | `divergence.png` and the outcome table |
-| Process, expectations and surprises | Development log, calibration chart, tuning, Bot 4 vs the earlier Bot 4 |
-| Q4: the ideal bot, computation vs intelligence | Clairvoyant bound, the earlier Bot 4 (more computation, closer to the bound), thinking time, certain wins (when to just run) |
+| Process, expectations and surprises | "How Bot 4 got here", tuning |
+| Q4: the ideal bot, computation vs intelligence | Thinking time, the known limitation and the two suggested changes, certain wins (when to just run) |

@@ -4,177 +4,64 @@ import math
 import numpy as np
 import pytest
 
-from math import comb
-
-from forecast import FORECASTS, FireForecast
+from fire import spread_chances, spread_fire
 from planners import danger_radius, fire_arrival_probability
-from planning import astar_path, bfs_path, manhattan_distances, risk_astar, with_neighbors
+from planning import (astar_path, bfs_distances, bfs_path, fire_distances, manhattan_distance,
+                      with_neighbors)
 from ship import Ship
 
 
-def assert_valid_path(ship, path, start, goal, blocked=None):
+def pick(ship, rng, count):
+    """`count` different random open tiles."""
+    cells = ship.open_cells()
+    return [cells[i] for i in rng.choice(len(cells), size=count, replace=False)]
+
+
+def assert_valid_path(ship, path, start, goal, blocked=()):
     assert path[0] == start and path[-1] == goal
     for a, b in zip(path, path[1:]):
-        assert b in ship.neighbors[a]
-    if blocked is not None:
-        assert not any(blocked[c] for c in path[1:])
+        assert b in ship.neighbors(a)
+    assert not any(pos in blocked for pos in path[1:])
 
 
 @pytest.mark.parametrize("seed", range(10))
 def test_bfs_path_is_shortest(seed):
     rng = np.random.default_rng(seed)
     ship = Ship.generate(20, rng)
-    start, goal = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
-    path = bfs_path(ship.neighbors, start, goal, [False] * ship.D ** 2)
+    start, goal = pick(ship, rng, 2)
+    path = bfs_path(ship, start, goal, set())
     assert_valid_path(ship, path, start, goal)
-    assert len(path) - 1 == ship.distances_from(start)[goal]
+    assert len(path) - 1 == bfs_distances(ship, start)[goal[0]][goal[1]]
 
 
-def test_bfs_path_avoids_blocked_cells_or_gives_up():
+def test_bfs_path_avoids_blocked_tiles_or_gives_up():
     rng = np.random.default_rng(0)
     for _ in range(30):
         ship = Ship.generate(15, rng)
-        start, goal = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
-        blocked = (rng.random(ship.D ** 2) < 0.2).tolist()
-        blocked[goal] = False
-        path = bfs_path(ship.neighbors, start, goal, blocked)
+        start, goal = pick(ship, rng, 2)
+        blocked = {pos for pos in ship.open_cells() if rng.random() < 0.2} - {goal}
+        path = bfs_path(ship, start, goal, blocked)
         if path is not None:
             assert_valid_path(ship, path, start, goal, blocked)
 
 
 def test_with_neighbors():
-    mask = np.zeros(25, dtype=bool)
-    mask[12] = True  # centre of a 5x5 grid
-    assert set(np.flatnonzero(with_neighbors(mask, 5))) == {7, 11, 12, 13, 17}
+    ship = Ship(5)
+    assert with_neighbors(ship, {(2, 2)}) == {(1, 2), (2, 1), (2, 2), (2, 3), (3, 2)}
 
-
-def path_cost(path, goal, risk_at, w):
-    cost = 0.0
-    for k, cell in enumerate(path[1:], start=1):
-        cost += 1.0 + w * risk_at(k - 1 if cell == goal else k)[cell]
-    return cost
-
-
-def brute_force_cost(ship, start, goal, risk_at, w, horizon):
-    """Dijkstra over every (cell, time) state with no pruning."""
-    best = {(start, 0): 0.0}
-    heap = [(0.0, 0, start)]
-    while heap:
-        g, t, cell = heapq.heappop(heap)
-        if g > best[(cell, t)]:
-            continue
-        if cell == goal:
-            return g
-        if t >= horizon:
-            continue
-        for n in ship.neighbors[cell]:
-            r = risk_at(t if n == goal else t + 1)[n]
-            if r == math.inf:
-                continue
-            ng = g + 1.0 + w * r
-            if ng < best.get((n, t + 1), math.inf):
-                best[(n, t + 1)] = ng
-                heapq.heappush(heap, (ng, t + 1, n))
-    return None
-
-
-@pytest.mark.parametrize("seed", range(15))
-def test_risk_astar_matches_brute_force(seed):
-    # Random risk that only grows over time, like a real fire forecast.
-    rng = np.random.default_rng(seed)
-    ship = Ship.generate(9, rng)
-    start, goal = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
-    horizon = ship.n_open + 2
-    layers = np.cumsum(rng.exponential(0.05, size=(horizon + 1, ship.D ** 2)), axis=0)
-    risk_at = lambda t: layers[min(t, horizon)]
-    heuristic = ship.distances_from(goal)
-    for w in (0.0, 1.0, 10.0):
-        path = risk_astar(ship.neighbors, start, goal, heuristic, risk_at, w)
-        assert_valid_path(ship, path, start, goal)
-        expected = brute_force_cost(ship, start, goal, risk_at, w, horizon)
-        assert path_cost(path, goal, risk_at, w) == pytest.approx(expected)
-
-
-def test_risk_astar_without_risk_is_shortest_fire_free_path():
-    rng = np.random.default_rng(7)
-    for _ in range(20):
-        ship = Ship.generate(20, rng)
-        start, goal, fire = (int(c) for c in rng.choice(ship.open_cells, 3, replace=False))
-        burning = np.zeros(ship.D ** 2, dtype=bool)
-        burning[fire] = True
-        forecast = FireForecast(ship, 0.5, burning)
-        path = risk_astar(ship.neighbors, start, goal, ship.distances_from(goal),
-                          forecast.risk_at, 0.0)
-        reference = bfs_path(ship.neighbors, start, goal, burning.tolist())
-        if reference is None:
-            assert path is None
-        else:
-            assert_valid_path(ship, path, start, goal, burning)
-            assert len(path) == len(reference)
-
-
-@pytest.mark.parametrize("kind", sorted(FORECASTS))
-def test_forecast_is_exact_when_fire_is_deterministic(kind):
-    rng = np.random.default_rng(2)
-    ship = Ship.generate(20, rng)
-    origin = int(ship.open_cells[0])
-    burning = np.zeros(ship.D ** 2, dtype=bool)
-    burning[origin] = True
-    forecast = FORECASTS[kind](ship, 1.0, burning)
-    dist = ship.distances_from(origin)
-    for t in (0, 1, 5, 12):
-        expected = np.array([d <= t for d in dist])
-        assert np.allclose(forecast.prob_at(t), expected)
-
-
-def test_message_passing_is_exact_on_a_corridor():
-    # Cell d along a corridor is burning after t updates iff at least d of
-    # t independent coin flips with chance q came up: P(Bin(t, q) >= d).
-    q, n = 0.3, 12
-    grid = np.zeros((n, n), dtype=bool)
-    grid[0, :] = True
-    ship = Ship(grid)
-    burning = np.zeros(n * n, dtype=bool)
-    burning[0] = True
-    forecast = FORECASTS["dmp"](ship, q, burning)
-    for t in (1, 4, 10, 20):
-        p = forecast.prob_at(t)
-        for d in range(1, n):
-            exact = sum(comb(t, k) * q ** k * (1 - q) ** (t - k) for k in range(d, t + 1))
-            assert p[d] == pytest.approx(exact, abs=1e-9)
-
-
-@pytest.mark.parametrize("kind", sorted(FORECASTS))
-def test_forecast_probabilities_are_valid_and_grow(kind):
-    rng = np.random.default_rng(4)
-    ship = Ship.generate(20, rng)
-    burning = np.zeros(ship.D ** 2, dtype=bool)
-    burning[rng.choice(ship.open_cells, 3, replace=False)] = True
-    forecast = FORECASTS[kind](ship, 0.3, burning)
-    prev = forecast.prob_at(0)
-    assert (prev[burning] == 1).all()
-    for t in range(1, 30):
-        p = forecast.prob_at(t)
-        assert ((p >= 0) & (p <= 1)).all()
-        assert (p >= prev - 1e-12).all()
-        assert (p[~ship.open_flat] == 0).all()
-        prev = p
-
-
-# ------------------------------------------------- A* and Bot 4's race model --
 
 @pytest.mark.parametrize("seed", range(10))
 def test_astar_with_unit_costs_finds_shortest_paths(seed):
     rng = np.random.default_rng(seed)
     ship = Ship.generate(20, rng)
-    start, goal = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
-    path = astar_path(ship.neighbors, start, goal, [1.0] * ship.D ** 2,
-                      manhattan_distances(ship.D, goal))
+    start, goal = pick(ship, rng, 2)
+    cost = [[1.0] * ship.D for r in range(ship.D)]
+    path = astar_path(ship, start, goal, cost)
     assert_valid_path(ship, path, start, goal)
-    assert len(path) - 1 == ship.distances_from(start)[goal]
+    assert len(path) - 1 == bfs_distances(ship, start)[goal[0]][goal[1]]
 
 
-def dijkstra_cost(ship, start, goal, step_cost):
+def dijkstra_cost(ship, start, goal, cost):
     """Cheapest cost by plain Dijkstra (no heuristic), for comparison."""
     best = {start: 0.0}
     heap = [(0.0, start)]
@@ -184,11 +71,12 @@ def dijkstra_cost(ship, start, goal, step_cost):
             return g
         if g > best[cell]:
             continue
-        for n in ship.neighbors[cell]:
-            if step_cost[n] == math.inf:
+        for n in ship.neighbors(cell):
+            step = cost[n[0]][n[1]]
+            if step == math.inf:
                 continue
-            if g + step_cost[n] < best.get(n, math.inf):
-                best[n] = g + step_cost[n]
+            if g + step < best.get(n, math.inf):
+                best[n] = g + step
                 heapq.heappush(heap, (best[n], n))
     return None
 
@@ -197,27 +85,41 @@ def dijkstra_cost(ship, start, goal, step_cost):
 def test_astar_finds_the_cheapest_path(seed):
     rng = np.random.default_rng(seed)
     ship = Ship.generate(20, rng)
-    start, goal = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
-    # Costs like Bot 4's: mostly 1, some cells 21, a few impassable.
-    roll = rng.random(ship.D ** 2)
-    step_cost = [math.inf if r < 0.05 else 21.0 if r < 0.3 else 1.0 for r in roll]
-    step_cost[goal] = 1.0
-    path = astar_path(ship.neighbors, start, goal, step_cost, manhattan_distances(ship.D, goal))
-    expected = dijkstra_cost(ship, start, goal, step_cost)
+    start, goal = pick(ship, rng, 2)
+    # Costs like Bot 4's: mostly 1, some 21, a few impassable.
+    cost = [[1.0] * ship.D for r in range(ship.D)]
+    for r in range(ship.D):
+        for c in range(ship.D):
+            roll = rng.random()
+            if roll < 0.05:
+                cost[r][c] = math.inf
+            elif roll < 0.3:
+                cost[r][c] = 21.0
+    cost[goal[0]][goal[1]] = 1.0
+    path = astar_path(ship, start, goal, cost)
+    expected = dijkstra_cost(ship, start, goal, cost)
     if expected is None:
         assert path is None
     else:
         assert_valid_path(ship, path, start, goal)
-        assert sum(step_cost[c] for c in path[1:]) == pytest.approx(expected)
+        assert sum(cost[r][c] for r, c in path[1:]) == pytest.approx(expected)
 
 
 def test_manhattan_never_overestimates():
     rng = np.random.default_rng(1)
     ship = Ship.generate(20, rng)
-    goal = int(ship.open_cells[0])
-    h = manhattan_distances(ship.D, goal)
-    dist = ship.distances_from(goal)
-    assert all(h[c] <= dist[c] for c in ship.open_cells)
+    goal = ship.open_cells()[0]
+    dist = bfs_distances(ship, goal)
+    assert all(manhattan_distance(pos, goal) <= dist[pos[0]][pos[1]] for pos in ship.open_cells())
+
+
+def test_fire_distance_through_walls_is_manhattan():
+    ship = Ship.generate(15, np.random.default_rng(2))
+    fire = {ship.open_cells()[0], ship.open_cells()[-1]}
+    dist = fire_distances(ship, fire, ignore_walls=True)
+    for r in range(ship.D):
+        for c in range(ship.D):
+            assert dist[r][c] == min(manhattan_distance((r, c), f) for f in fire)
 
 
 @pytest.mark.parametrize("q", [0.1, 0.3, 0.7])
@@ -231,18 +133,47 @@ def test_danger_radius_matches_the_binomial_formula(q, threshold):
                 assert (d <= radius[k]) == (p > threshold)
 
 
-def test_race_model_is_exact_on_a_corridor():
-    # Along a corridor the fire really does advance one cell per step with
-    # probability q, so the race model matches the (exact) message-passing
-    # forecast there.
-    q, n = 0.3, 12
-    grid = np.zeros((n, n), dtype=bool)
-    grid[0, :] = True
-    ship = Ship(grid)
-    burning = np.zeros(n * n, dtype=bool)
-    burning[0] = True
-    forecast = FORECASTS["dmp"](ship, q, burning)
-    for k in (1, 4, 10, 20):
-        p = forecast.prob_at(k)
-        for d in range(1, n):
-            assert fire_arrival_probability(k, d, q) == pytest.approx(p[d], abs=1e-9)
+def burn_frequencies(ship, origin, q, steps, runs, seed):
+    """freq[t][(r, c)] = fraction of simulated fires in which (r, c) is burning
+    after t updates."""
+    chance = spread_chances(q)
+    counts = [dict() for _ in range(steps + 1)]
+    for run in range(runs):
+        rng = np.random.default_rng([seed, run])
+        ship.clear()
+        ship.tile(origin).on_fire = True
+        for t in range(1, steps + 1):
+            spread_fire(ship, chance, rng)
+            for pos in ship.fire_cells():
+                counts[t][pos] = counts[t].get(pos, 0) + 1
+    return [{pos: n / runs for pos, n in layer.items()} for layer in counts]
+
+
+def test_race_model_matches_the_real_fire_on_a_corridor():
+    # Along a corridor the fire really does advance one tile per step with
+    # probability q, so the race model should match simulated fires.
+    q, runs = 0.3, 1500
+    rows = ["#" * 12] * 12
+    rows[0] = "." * 12
+    ship = Ship.from_rows(rows)
+    freq = burn_frequencies(ship, (0, 0), q, 15, runs, seed=11)
+    for t in (5, 10, 15):
+        for d in (1, 3, 6, 10):
+            expected = fire_arrival_probability(t, d, q)
+            seen = freq[t].get((0, d), 0.0)
+            assert abs(seen - expected) < 4 * math.sqrt(expected * (1 - expected) / runs) + 1e-3
+
+
+def test_race_model_never_overestimates_the_fire():
+    # On a real ship the fire can also arrive by other routes, which only
+    # makes it faster: the real chance is never below the race model's.
+    q, runs = 0.4, 800
+    ship = Ship.generate(12, np.random.default_rng(12))
+    origin = ship.open_cells()[len(ship.open_cells()) // 2]
+    dist = bfs_distances(ship, origin)
+    freq = burn_frequencies(ship, origin, q, 15, runs, seed=13)
+    for t in (5, 10, 15):
+        for r, c in ship.open_cells():
+            model = fire_arrival_probability(t, dist[r][c], q)
+            seen = freq[t].get((r, c), 0.0)
+            assert seen >= model - 4 * math.sqrt(model * (1 - model) / runs) - 0.01

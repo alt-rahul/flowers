@@ -2,13 +2,13 @@
 import numpy as np
 import pytest
 
-from bots import make_bot
+from bots import Bot, make_bot
 from planners import avoid_fire, avoid_fire_and_neighbors, predicted_fire
-from planning import bfs_distances, bfs_path
+from planning import bfs_distances, bfs_path, fire_distances, fireproof_path, with_neighbors
 from ship import Ship
-from simulation import SUCCESS, TRAPPED, Trial, oracle_steps, run_bot
+from simulation import ENTERED_FIRE, SUCCESS, TRAPPED, Trial, fire_history, run_bot
 
-BOT_SPECS = ["bot1", "bot2", "bot3", "bot4", "bot4_forecast"]
+BOT_SPECS = ["bot1", "bot2", "bot3", "bot4"]
 
 
 def trials(n, D=20, q=0.3, seed=0):
@@ -17,84 +17,96 @@ def trials(n, D=20, q=0.3, seed=0):
 
 
 def corridor(n=12):
-    """A ship that is one corridor along the top row: cells 0 .. n-1."""
-    grid = np.zeros((n, n), dtype=bool)
-    grid[0, :] = True
-    return Ship(grid)
+    """A ship that is one corridor along the top row: (0, 0) .. (0, n-1)."""
+    rows = ["#" * n] * n
+    rows[0] = "." * n
+    return Ship.from_rows(rows)
 
 
-def fire_at(ship, *cells):
-    burning = np.zeros(ship.D * ship.D, dtype=bool)
-    burning[list(cells)] = True
-    return burning
+def set_fire(ship, *cells):
+    ship.clear()
+    for pos in cells:
+        ship.tile(pos).on_fire = True
 
 
 # --------------------------------------------------------------- planners --
 
 def test_bot3_falls_back_to_bot2_when_the_buffer_blocks_every_route():
     # A corridor with a side pocket: the fire sits in the pocket, right next
-    # to the corridor cell the bot must pass through.
-    grid = np.zeros((7, 7), dtype=bool)
-    grid[3, :] = True          # the corridor
-    grid[2, 3] = True          # the pocket
-    ship = Ship(grid)
-    burning = fire_at(ship, ship.index(2, 3))
-    start, button = ship.index(3, 0), ship.index(3, 6)
-    path = avoid_fire_and_neighbors(ship, start, button, burning, 0.3)
-    assert path == avoid_fire(ship, start, button, burning, 0.3)
-    assert ship.index(3, 3) in path      # it has to walk past the fire
+    # to the corridor tile the bot must pass through.
+    ship = Ship.from_rows(["#######",
+                           "#######",
+                           "###.###",
+                           ".......",
+                           "#######",
+                           "#######",
+                           "#######"])
+    set_fire(ship, (2, 3))
+    start, button = (3, 0), (3, 6)
+    path = avoid_fire_and_neighbors(ship, start, button, 0.3)
+    assert path == avoid_fire(ship, start, button, 0.3)
+    assert (3, 3) in path      # it has to walk past the fire
 
 
 def test_bot3_avoids_the_buffer_when_it_can():
     rng = np.random.default_rng(0)
     for _ in range(20):
         ship = Ship.generate(20, rng)
-        start, button, fire = (int(c) for c in rng.choice(ship.open_cells, 3, replace=False))
-        burning = fire_at(ship, fire)
-        path = avoid_fire_and_neighbors(ship, start, button, burning, 0.3)
-        buffered_cells = set(ship.neighbors[fire]) | {fire}
-        if path is not None and bfs_path(ship.neighbors, start, button,
-                                         [c in buffered_cells for c in range(ship.D ** 2)]):
-            assert not buffered_cells & set(path[1:])
+        cells = ship.open_cells()
+        start, button, fire = (cells[i] for i in rng.choice(len(cells), 3, replace=False))
+        set_fire(ship, fire)
+        buffer = with_neighbors(ship, {fire})
+        path = avoid_fire_and_neighbors(ship, start, button, 0.3)
+        if path is not None and bfs_path(ship, start, button, buffer):
+            assert not buffer & set(path[1:])
 
 
 def test_predicted_fire_is_not_a_fixed_buffer():
-    # Corridor 0..11, fire at 11, q = 0.5, threshold 0.6.
+    # Corridor (0, 0) .. (0, 11), fire at (0, 11), q = 0.5, threshold 0.6.
     ship = corridor()
-    burning = fire_at(ship, 11)
-    # Bot at 9: cell 10 is next to the fire, but the bot gets there in one
+    set_fire(ship, (0, 11))
+    # Bot at (0, 9): (0, 10) is next to the fire, but the bot gets there in one
     # step and the fire needs a successful advance first (chance 0.5 < 0.6).
-    near = predicted_fire(ship, 9, -1, burning, 0.5, threshold=0.6)
-    assert not near[10]
-    # Bot at 0: it needs 10 steps to reach cell 10, by which time the fire has
-    # almost surely got there; it reaches cell 5 in 5 steps, but the fire
+    near = predicted_fire(ship, (0, 9), None, 0.5, threshold=0.6)
+    assert (0, 10) not in near
+    # Bot at (0, 0): it needs 10 steps to reach (0, 10), by which time the fire
+    # has almost surely got there; it reaches (0, 5) in 5 steps, but the fire
     # needs 6 advances in 5 steps, which is impossible.
-    far = predicted_fire(ship, 0, -1, burning, 0.5, threshold=0.6)
-    assert far[10] and not far[5]
+    far = predicted_fire(ship, (0, 0), None, 0.5, threshold=0.6)
+    assert (0, 10) in far and (0, 5) not in far
 
 
 def test_predicted_fire_is_exact_when_q_is_one():
-    # At q = 1 the fire advances every step, so a cell is "predicted fire"
+    # At q = 1 the fire advances every step, so a tile is "predicted fire"
     # exactly when the fire is at most as far from it as the bot is.
     rng = np.random.default_rng(3)
     for _ in range(10):
         ship = Ship.generate(20, rng)
-        start, fire = (int(c) for c in rng.choice(ship.open_cells, 2, replace=False))
-        burning = fire_at(ship, fire)
-        danger = predicted_fire(ship, start, -1, burning, 1.0, threshold=0.6)
-        from_fire = ship.distances_from(fire)
-        from_bot = bfs_distances(ship.neighbors, start, burning.tolist())
-        for c in ship.open_cells.tolist():
-            if c != fire and from_bot[c] != float("inf"):
-                assert danger[c] == (from_fire[c] <= from_bot[c])
+        cells = ship.open_cells()
+        start, fire = (cells[i] for i in rng.choice(len(cells), 2, replace=False))
+        set_fire(ship, fire)
+        danger = predicted_fire(ship, start, None, 1.0, threshold=0.6)
+        from_fire = bfs_distances(ship, fire)
+        from_bot = bfs_distances(ship, start, restricted={fire})
+        for r, c in cells:
+            if (r, c) != fire and from_bot[r][c] != float("inf"):
+                assert ((r, c) in danger) == (from_fire[r][c] <= from_bot[r][c])
+
+
+def test_one_step_rule_only_flags_tiles_next_to_the_fire():
+    for trial in trials(10, q=0.9, seed=4):
+        fire_history(trial, 5)   # leaves the ship's tiles as the fire is after 5 updates
+        ship = trial.ship
+        danger = predicted_fire(ship, trial.bot_start, trial.button, 0.9, lookahead=False)
+        assert danger <= with_neighbors(ship, ship.fire_cells())
 
 
 # ------------------------------------------------------------------- bots --
 
 def test_bot1_plans_once_and_never_replans():
     for trial in trials(20, q=0.5, seed=1):
-        plan = bfs_path(trial.ship.neighbors, trial.bot_start, trial.button,
-                        trial.fire.burning_at(0).tolist())
+        trial.start()
+        plan = bfs_path(trial.ship, trial.bot_start, trial.button, trial.ship.fire_cells())
         out = run_bot(trial, make_bot("bot1"), record_path=True)
         if plan is not None:
             assert out.path == plan[:len(out.path)]
@@ -115,25 +127,34 @@ def test_bot4_without_penalty_behaves_like_bot2():
 
 
 @pytest.mark.parametrize("q", [0.0, 0.2, 0.5, 1.0])
-def test_no_bot_beats_the_clairvoyant_bound(q):
-    for trial in trials(40, q=q, seed=2):
-        best = oracle_steps(trial)
+def test_runs_follow_the_rules(q):
+    for trial in trials(25, q=q, seed=2):
         for spec in BOT_SPECS:
             out = run_bot(trial, make_bot(spec), record_path=True)
             assert out.path[0] == trial.bot_start
-            assert out.reason != "entered_fire" or spec == "bot1"   # only Bot 1 walks into fire
+            assert len(out.path) == out.steps + 1        # one move per time step
+            assert out.reason != ENTERED_FIRE or spec == "bot1"   # only Bot 1 walks into fire
             if out.success:
-                assert best is not None and out.steps >= best
                 assert out.path[-1] == trial.button
 
 
 def test_everyone_wins_without_fire_spread():
     for trial in trials(20, q=0.0, seed=3):
-        reachable = bfs_path(trial.ship.neighbors, trial.bot_start, trial.button,
-                             trial.fire.burning_at(0).tolist()) is not None
+        trial.start()
+        reachable = bfs_path(trial.ship, trial.bot_start, trial.button,
+                             trial.ship.fire_cells()) is not None
         for spec in BOT_SPECS:
             out = run_bot(trial, make_bot(spec))
             assert out.reason == (SUCCESS if reachable else TRAPPED)
+
+
+def test_every_run_of_a_trial_sees_the_same_fire():
+    trial = next(trials(1, q=0.4, seed=9))
+    assert fire_history(trial, 40) == fire_history(trial, 40)
+    first = run_bot(trial, make_bot("bot2"), record_path=True)
+    run_bot(trial, make_bot("bot4"))
+    again = run_bot(trial, make_bot("bot2"), record_path=True)
+    assert (first.reason, first.steps, first.path) == (again.reason, again.steps, again.path)
 
 
 def test_make_bot_parses_options():
@@ -147,22 +168,32 @@ def test_make_bot_parses_options():
 
 # ------------------------------------------------------------ certain wins --
 
-def test_fireproof_matches_clairvoyant_when_fire_is_fastest():
-    # At q = 1 the fire spreads at every chance, so "some path outruns the
-    # fastest possible fire" must agree exactly with the clairvoyant bot.
-    for trial in trials(60, q=1.0, seed=5):
-        assert trial.fireproof() == (oracle_steps(trial) is not None)
+def follow_fireproof_path(ship, pos, button, q):
+    """A planner for the test below: the path the fastest possible fire can't catch."""
+    return fireproof_path(ship, pos, button, fire_distances(ship, ship.fire_cells()))
 
 
-@pytest.mark.parametrize("q", [0.1, 0.4, 0.7])
-def test_fireproof_trials_are_always_winnable(q):
+@pytest.mark.parametrize("q", [0.1, 0.4, 0.7, 1.0])
+def test_following_the_fireproof_path_always_wins(q):
+    # If a trial is a certain win, a bot that plans the fireproof path once and
+    # follows it must win against the real fire, whatever q is.
+    bot = Bot("fireproof", follow_fireproof_path, replan=False)
+    certain = 0
     for trial in trials(40, q=q, seed=6):
         if trial.fireproof():
-            assert oracle_steps(trial) is not None
+            certain += 1
+            assert run_bot(trial, bot).success
+    assert certain > 0
 
 
-@pytest.mark.parametrize("q", [0.1, 0.5, 0.9])
-def test_forecast_bot_wins_every_fireproof_trial(q):
-    for trial in trials(40, q=q, seed=8):
-        if trial.fireproof():
-            assert run_bot(trial, make_bot("bot4_forecast")).success
+# ------------------------------------------------------ known results --
+
+def test_known_trial_outcomes():
+    # Two trials from the main experiment (D = 50, seed 440), with the
+    # outcomes recorded in results/main.csv.gz.
+    from experiments import trial_rng
+    trial = Trial.generate(50, 0.3, trial_rng(440, 0.3, 463))
+    out2 = run_bot(trial, make_bot("bot2"))
+    out4 = run_bot(trial, make_bot("bot4"))
+    assert (out2.reason, out2.steps) == ("trapped", 24)
+    assert (out4.reason, out4.steps) == ("success", 27)

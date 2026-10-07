@@ -3,108 +3,100 @@
 Replays Bot 4 on a trial until the first move where its plan is longer than
 the shortest fire-free path (the shortest path is what Bot 2 would take), so
 the bot is genuinely trading length for safety. Then it draws the ship at
-that moment, with the burning cells, the cells Bot 4 predicted would be on
+that moment, with the burning tiles, the tiles Bot 4 predicted would be on
 fire, and both paths on top, and prints the numbers Bot 4 compared.
 
     python decision.py --D 50 --q 0.3 --trial 5 --out results/examples/decision.png
 """
 import argparse
 
-import numpy as np
+import matplotlib
+matplotlib.use("Agg")   # draw straight to PNG files, no window
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 
-from analyze import INK, INK_2, SURFACE
 from bots import make_bot
 from experiments import trial_rng
 from planners import avoid_fire, avoid_predicted_fire, predicted_fire
+from fire import spread_chances, spread_fire
 from simulation import Trial
-
-BLOCKED = "#383835"
-BURNING = "#d03b00"
-PREDICTED = "#f6b26b"
-OPEN = "#f4f3ef"
 
 
 def path_numbers(path, danger, penalty):
-    """Steps, predicted-fire cells on the path, and the A* cost Bot 4 gives it."""
+    """Steps, predicted-fire tiles on the path, and the A* cost Bot 4 gives it."""
     steps = len(path) - 1
-    flagged = sum(1 for c in path[1:] if danger[c])
+    flagged = sum(1 for pos in path[1:] if pos in danger)
     return {"steps": steps, "flagged": flagged, "cost": steps + penalty * flagged}
 
 
 def find_decision(trial, options):
-    """Replay Bot 4 until it first prefers a longer path; return the state."""
+    """Replay Bot 4 until it first prefers a longer path. Returns (t, pos,
+    plan, short) and leaves the ship's tiles as they were at that moment, or
+    returns None if that never happens."""
     ship, button, q = trial.ship, trial.button, trial.q
+    fire_rng = trial.start()
+    chance = spread_chances(q)
     pos, t = trial.bot_start, 0
     while True:
-        burning = trial.fire.burning_at(t)
-        plan = avoid_predicted_fire(ship, pos, button, burning, q, **options)
-        short = avoid_fire(ship, pos, button, burning, q)
+        plan = avoid_predicted_fire(ship, pos, button, q, **options)
+        short = avoid_fire(ship, pos, button, q)
         if plan is None or short is None:
             return None
         if len(plan) > len(short):
-            return t, pos, burning, plan, short
-        pos, t = plan[1], t + 1
-        if pos == button or trial.fire.is_burning(pos, t):
+            return t, pos, plan, short
+        ship.tile(pos).has_bot = False
+        pos = plan[1]
+        ship.tile(pos).has_bot = True
+        if pos == button:
+            return None
+        spread_fire(ship, chance, fire_rng)
+        t += 1
+        if ship.tile(pos).on_fire:
             return None
 
 
 def draw(trial, pos, burning, danger, plan, short, nums, out, title):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import to_rgb
-    from matplotlib.patches import Patch
+    """The ship at the moment of the decision: walls black, floor white,
+    burning tiles red, predicted-fire tiles yellow; Bot 2's shortest path
+    dashed and Bot 4's plan solid. Zoomed to the part that matters."""
+    ship = trial.ship
+    colors = ListedColormap(["black", "white", "gold", "red"])   # wall, floor, predicted, burning
+    picture = []
+    for r in range(ship.D):
+        row = []
+        for c in range(ship.D):
+            if not ship.grid[r][c].is_open:
+                row.append(0)
+            elif (r, c) in burning:
+                row.append(3)
+            elif (r, c) in danger:
+                row.append(2)
+            else:
+                row.append(1)
+        picture.append(row)
 
-    ship, D = trial.ship, trial.ship.D
-    # Colour every cell: wall, open, predicted fire or burning.
-    img = np.zeros((D, D, 3))
-    img[ship.grid] = to_rgb(OPEN)
-    img[~ship.grid] = to_rgb(BLOCKED)
-    img[np.array(danger).reshape(D, D)] = to_rgb(PREDICTED)
-    img[burning.reshape(D, D)] = to_rgb(BURNING)
+    plt.figure(figsize=(7, 7))
+    plt.imshow(picture, cmap=colors, vmin=0, vmax=3)
+    plt.plot([c for r, c in short], [r for r, c in short], "b--", linewidth=2,
+             label=f"shortest path (Bot 2): {nums['short']['steps']} steps, "
+                   f"{nums['short']['flagged']} predicted-fire tiles")
+    plt.plot([c for r, c in plan], [r for r, c in plan], "b-", linewidth=2,
+             label=f"Bot 4's plan: {nums['plan']['steps']} steps, "
+                   f"{nums['plan']['flagged']} predicted-fire tiles")
+    plt.plot(pos[1], pos[0], "bo", markersize=9, label="bot")
+    plt.plot(trial.button[1], trial.button[0], "g*", markersize=15, label="button")
 
-    # Zoom to the part of the ship that matters: both paths and the fire.
-    cells = [ship.coords(c) for c in plan + short] + list(zip(*np.nonzero(burning.reshape(D, D))))
-    rows, cols = zip(*cells)
-    r0, r1 = max(min(rows) - 3, 0), min(max(rows) + 3, D - 1)
-    c0, c1 = max(min(cols) - 3, 0), min(max(cols) + 3, D - 1)
-
-    fig, ax = plt.subplots(figsize=(7.5, 7.5), dpi=150)
-    fig.patch.set_facecolor(SURFACE)
-    ax.imshow(img, interpolation="nearest")
-    for path, style, name in [(short, (0, (3, 2)), "shortest fire-free path (Bot 2's choice)"),
-                              (plan, "-", "Bot 4's plan")]:
-        rc = np.array([ship.coords(c) for c in path])
-        ax.plot(rc[:, 1], rc[:, 0], color=SURFACE, linewidth=4.5, solid_capstyle="round")
-        ax.plot(rc[:, 1], rc[:, 0], color=INK, linewidth=2, linestyle=style,
-                solid_capstyle="round", label=name)
-    for cell, marker, color, name in [(pos, "o", INK, "bot now"),
-                                      (trial.button, "*", "#008300", "button")]:
-        r, c = ship.coords(cell)
-        ax.plot(c, r, marker=marker, markersize=15 if marker == "*" else 10, color=color,
-                markeredgecolor=SURFACE, markeredgewidth=1.5, linestyle="none", label=name)
-    ax.set_xlim(c0 - 0.5, c1 + 0.5)
-    ax.set_ylim(r1 + 0.5, r0 - 0.5)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    for s in ax.spines.values():
-        s.set_visible(False)
-
-    handles, labels = ax.get_legend_handles_labels()
-    handles += [Patch(color=BURNING), Patch(color=PREDICTED)]
-    labels += ["burning now", "predicted fire (Bot 4 adds the penalty)"]
-    fig.legend(handles, labels, loc="lower center", ncol=2, frameon=False, fontsize=9,
-               labelcolor=INK)
-    s, b = nums["short"], nums["plan"]
-    fig.suptitle(title, x=0.02, ha="left", color=INK, fontsize=12, fontweight="bold")
-    fig.text(0.02, 0.925,
-             f"Shortest path: {s['steps']} steps, {s['flagged']} predicted-fire cells, "
-             f"cost {s['cost']:g}.   Bot 4's plan: {b['steps']} steps, "
-             f"{b['flagged']} predicted-fire cells, cost {b['cost']:g}.",
-             color=INK_2, fontsize=9)
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.9, bottom=0.12)
-    fig.savefig(out, facecolor=SURFACE)
-    plt.close(fig)
+    # Zoom to both paths and the fire.
+    cells = plan + short + list(burning)
+    rows = [r for r, c in cells]
+    cols = [c for r, c in cells]
+    plt.xlim(min(cols) - 3, max(cols) + 3)
+    plt.ylim(max(rows) + 3, min(rows) - 3)   # row 0 at the top, like the grid
+    plt.axis("off")
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, 0), fontsize=8)
+    plt.title(title)
+    plt.savefig(out, dpi=120, bbox_inches="tight")
+    plt.close()
 
 
 def main():
@@ -125,16 +117,17 @@ def main():
     found = find_decision(trial, options)
     if found is None:
         raise SystemExit("Bot 4 never preferred a longer path on this trial")
-    t, pos, burning, plan, short = found
+    t, pos, plan, short = found
     lookahead = options.get("lookahead", True)
     fire_metric = options.get("fire_metric", "maze")
-    danger = predicted_fire(trial.ship, pos, trial.button, burning, trial.q, threshold,
+    burning = trial.ship.fire_cells()
+    danger = predicted_fire(trial.ship, pos, trial.button, trial.q, threshold,
                             lookahead, fire_metric)
     nums = {"short": path_numbers(short, danger, penalty),
             "plan": path_numbers(plan, danger, penalty)}
     for name in ("short", "plan"):
         n = nums[name]
-        print(f"{name:5s}: {n['steps']} steps, {n['flagged']} predicted-fire cells, "
+        print(f"{name:5s}: {n['steps']} steps, {n['flagged']} predicted-fire tiles, "
               f"cost {n['cost']:g}")
     title = (f"Bot 4's decision at move {t + 1}: trial {args.trial}, q = {args.q:g}, "
              f"D = {args.D}")
