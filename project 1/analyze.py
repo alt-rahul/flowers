@@ -260,10 +260,20 @@ def diagnostic_tables(rows, bots, qs):
 # ---------------------------------------------------------------- plots ---
 #
 # Plain matplotlib charts, just to illustrate the results. Each bot keeps the
-# same default colour in every chart: Bot 1 is C0, Bot 2 is C1, and so on.
+# same colour and marker in every chart. The four colours stay distinguishable
+# for colour-blind readers, and the markers tell the bots apart without colour.
+BOT_COLORS = {"bot1": "#2a78d6", "bot2": "#eb6834", "bot3": "#1baf7a", "bot4": "#4a3aa7"}
+BOT_MARKERS = {"bot1": "o", "bot2": "s", "bot3": "^", "bot4": "D"}
+# Failure reasons get the same four colours, in order.
+REASON_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7"]
+
 
 def bot_color(bots, b):
-    return f"C{bots.index(b)}"
+    return BOT_COLORS.get(b, f"C{bots.index(b)}")
+
+
+def bot_marker(b):
+    return BOT_MARKERS.get(b, "o")
 
 
 def significant_span(rows, qs, base="bot4", rivals=("bot2", "bot3")):
@@ -279,7 +289,7 @@ def plot_success(path, bots, qs, stats):
     plt.figure(figsize=(8, 5))
     for b in bots:
         x = [q for q in qs if (b, q) in stats]
-        plt.plot(x, [stats[(b, q)]["rate"] for q in x], marker="o", markersize=3,
+        plt.plot(x, [stats[(b, q)]["rate"] for q in x], marker=bot_marker(b), markersize=4,
                  color=bot_color(bots, b), label=bot_label(b))
     plt.xlabel("Flammability q")
     plt.ylabel("Success rate")
@@ -299,7 +309,7 @@ def plot_differences(path, rows, bots, qs, base):
         d = paired_difference(rows, base, b)
         x = [q for q in qs if q in d]
         plt.errorbar(x, [100 * d[q][0] for q in x], yerr=[100 * d[q][1] for q in x],
-                     marker="o", markersize=3, capsize=2, color=bot_color(bots, b),
+                     marker=bot_marker(b), markersize=4, capsize=2, color=bot_color(bots, b),
                      label=f"{bot_label(base)} minus {bot_label(b)}")
     plt.axhline(0, color="black", linewidth=1)
     plt.xlabel("Flammability q")
@@ -321,7 +331,7 @@ def plot_centerpiece(path, rows, bots, qs, stats):
     span = significant_span(rows, qs)
     for b in bots:
         x = [q for q in qs if (b, q) in stats]
-        top.plot(x, [stats[(b, q)]["rate"] for q in x], marker="o", markersize=3,
+        top.plot(x, [stats[(b, q)]["rate"] for q in x], marker=bot_marker(b), markersize=4,
                  color=bot_color(bots, b), label=bot_label(b))
     certain = certain_wins(rows, bots, qs)
     top.plot(qs, [certain[q][1] for q in qs], "k--", label="Certain win from the start")
@@ -339,7 +349,7 @@ def plot_centerpiece(path, rows, bots, qs, stats):
         d = paired_difference(rows, "bot4", b)
         x = [q for q in qs if q in d]
         bottom.errorbar(x, [100 * d[q][0] for q in x], yerr=[100 * d[q][1] for q in x],
-                        marker="o", markersize=3, capsize=2, color=bot_color(bots, b),
+                        marker=bot_marker(b), markersize=4, capsize=2, color=bot_color(bots, b),
                         label=f"Bot 4 minus {bot_label(b)}")
     bottom.axhline(0, color="black", linewidth=1)
     if span:
@@ -361,7 +371,7 @@ def plot_divergence(path, bots, qs, div):
         if b in ("bot1", "bot2"):
             continue
         x = [q for q in qs if (b, q) in div]
-        plt.plot(x, [div[(b, q)][0] for q in x], marker="o", markersize=3,
+        plt.plot(x, [div[(b, q)][0] for q in x], marker=bot_marker(b), markersize=4,
                  color=bot_color(bots, b), label=bot_label(b))
     plt.xlabel("Flammability q")
     plt.ylabel("Share of trials")
@@ -384,7 +394,8 @@ def plot_failures(path, bots, qs, stats):
             total = sum(stats[(b, q)]["n"] for q in qs if (b, q) in stats)
             heights.append(failed / total)
         plt.bar([bot_label(b) for b in bots], heights, bottom=bottoms,
-                label=REASON_LABELS[reason])
+                color=REASON_COLORS[REASONS.index(reason)], edgecolor="white",
+                linewidth=1.5, label=REASON_LABELS[reason])
         bottoms = [x + h for x, h in zip(bottoms, heights)]
     plt.ylabel("Share of all trials")
     plt.title(f"Why bots fail (q = {min(qs):g} to {max(qs):g})")

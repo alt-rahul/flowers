@@ -20,6 +20,7 @@ python -m pytest                                   # 105 tests, about 15 seconds
 # (about 0.7 s per trial per core at D = 50, all four bots).
 python experiments.py --D 50 --q 0:1:0.05 --trials 1000 --out results/main.csv
 python analyze.py results/main.csv.gz --out results --bots bot1 bot2 bot3 bot4
+python figures.py --out results                    # the writeup's extra charts
 
 # Replay a single trial (trial numbers match the CSV) or find an interesting one
 python visualize.py --D 50 --q 0.3 --trial 17 --out trial17.png
@@ -45,6 +46,7 @@ Bots are named by spec strings, so variants can be compared in one run:
 | `simulation.py` | Runs a bot on a trial in the order the spec gives, moving the bot and spreading the fire on the tiles (and counts moves Bot 2 couldn't have made). |
 | `experiments.py` | Parallel, reproducible parameter sweeps that write CSVs. |
 | `analyze.py` | Success rates with 95% CIs, paired bot comparisons, failure breakdowns, charts. |
+| `figures.py` | The extra charts in the writeup: ship generation, Bot 4's danger radius, ship size, head-to-head results, tuning. |
 | `visualize.py` | Draws what each bot did on one trial. |
 | `decision.py` | Draws one of Bot 4's real decisions: what it predicted, its plan, and the shortest path it turned down. |
 | `tests/` | Unit tests (see "Correctness checks"). |

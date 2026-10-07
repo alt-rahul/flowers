@@ -58,7 +58,8 @@ def find_decision(trial, options):
 def draw(trial, pos, burning, danger, plan, short, nums, out, title):
     """The ship at the moment of the decision: walls black, floor white,
     burning tiles red, predicted-fire tiles yellow; Bot 2's shortest path
-    dashed and Bot 4's plan solid. Zoomed to the part that matters."""
+    dashed and Bot 4's plan solid. Zoomed to the part that matters, with the
+    legend to the right."""
     ship = trial.ship
     colors = ListedColormap(["black", "white", "gold", "red"])   # wall, floor, predicted, burning
     picture = []
@@ -93,7 +94,7 @@ def draw(trial, pos, burning, danger, plan, short, nums, out, title):
     plt.xlim(min(cols) - 3, max(cols) + 3)
     plt.ylim(max(rows) + 3, min(rows) - 3)   # row 0 at the top, like the grid
     plt.axis("off")
-    plt.legend(loc="upper center", bbox_to_anchor=(0.5, 0), fontsize=8)
+    plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=9)
     plt.title(title)
     plt.savefig(out, dpi=120, bbox_inches="tight")
     plt.close()
