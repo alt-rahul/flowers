@@ -1,87 +1,119 @@
-"""The bots: one Bot class, and a table saying how each bot is built.
+"""The four bots. Each function returns the path the bot wants to take (a list
+of positions from where it stands to the button), or None if every route to
+the button runs through fire."""
+import math
 
-A bot is just:
-    a name           e.g. "Bot 2"
-    a planner        a function from planners.py that returns a path
-    replan           True: ask the planner again every step
-                     False: plan once at the start, then follow that plan
-    options          extra settings passed to the planner (e.g. Bot 4's threshold)
+from search import a_star, bfs, distance_map
+from ship import grid_neighbors
 
-The simulator (simulation.run_bot) talks to every bot the same way:
-    bot.reset(ship, button, q)    once, when a trial starts
-    bot.act(pos)                  every step; returns the next position, or
-                                  None if no route to the button avoids the fire
-The bot sees the fire by looking at the ship's tiles (tile.on_fire). Because the
-fire never shrinks, None means the bot can never win, so the simulator ends the
-trial as "trapped".
-"""
-from planners import avoid_fire, avoid_fire_and_neighbors, avoid_predicted_fire
+# Bot 4's settings
+THRESHOLD = 0.6   # a tile counts as "predicted fire" above this chance
+PENALTY = 20      # extra cost for stepping onto a predicted-fire tile
 
 
-class Bot:
-    def __init__(self, name, planner, replan=True, **options):
-        # **options collects any extra keyword arguments into a dictionary,
-        # e.g. Bot("Bot 4", avoid_predicted_fire, threshold=0.5) gives
-        # options = {"threshold": 0.5}.
-        self.name = name
-        self.planner = planner
-        self.replan = replan
-        self.options = options
-
-    def reset(self, ship, button, q):
-        """Forget everything from the previous trial."""
-        self.ship = ship
-        self.button = button
-        self.q = q
-        self.path = None   # the plan being followed
-        self.k = 0         # index of the bot's current position in self.path
-
-    def act(self, pos):
-        """Return the next position to move to, or None if there is no route."""
-        if self.replan or self.path is None:
-            # **self.options passes the dictionary back as keyword arguments.
-            self.path = self.planner(self.ship, pos, self.button, self.q, **self.options)
-            self.k = 0
-            if self.path is None:
-                return None
-        self.k += 1
-        return self.path[self.k]   # path[0] is where the bot stands now
+def bot1_path(ship, pos, button):
+    """Bot 1: the shortest path avoiding the fire. Bot 1 only calls this once,
+    at the start, when only the first fire tile is burning."""
+    return bfs(ship, pos, button, ship.fire_cells())
 
 
-# How each bot is built: (display name, planner, replan every step?)
-BOTS = {
-    # Bot 1: plan the shortest path once, avoiding the initial fire tile (the
-    # only tile burning at the start), then follow it whatever the fire does.
-    "bot1": ("Bot 1", avoid_fire, False),
-    # Bot 2: every step, the shortest path that avoids the tiles burning now.
-    "bot2": ("Bot 2", avoid_fire, True),
-    # Bot 3: every step, also avoid tiles next to the fire if possible,
-    # otherwise fall back to Bot 2's planner.
-    "bot3": ("Bot 3", avoid_fire_and_neighbors, True),
-    # Bot 4: every step, A* that avoids the fire and penalises tiles the fire
-    # will probably reach before the bot does.
-    "bot4": ("Bot 4", avoid_predicted_fire, True),
-}
+def bot2_path(ship, pos, button):
+    """Bot 2: the shortest path avoiding the tiles that are burning now.
+    Bot 2 calls this every step."""
+    return bfs(ship, pos, button, ship.fire_cells())
 
 
-def parse_value(text):
-    """'true'/'false' -> bool, numbers -> float, anything else stays text."""
-    if text.lower() in ("true", "false"):
-        return text.lower() == "true"
-    try:
-        return float(text)
-    except ValueError:
-        return text
+def bot3_path(ship, pos, button):
+    """Bot 3: the shortest path avoiding the fire and every tile next to it.
+    If there isn't one, it does what Bot 2 does."""
+    fire = ship.fire_cells()
+    avoid = set(fire)
+    for r, c in fire:
+        for n in grid_neighbors(ship.D, r, c):
+            avoid.add(n)
+    path = bfs(ship, pos, button, avoid)
+    if path is None:
+        path = bfs(ship, pos, button, fire)
+    return path
 
 
-def make_bot(spec):
-    """Build a bot from a spec like "bot3" or "bot4:threshold=0.5,penalty=50".
-    Options after the colon are passed to the bot's planner."""
-    name, _, args = spec.partition(":")
-    options = {}
-    for item in args.split(","):
-        if item:
-            key, _, value = item.partition("=")
-            options[key] = parse_value(value)
-    label, planner, replan = BOTS[name]
-    return Bot(label, planner, replan, **options)
+# ---------------------------------------------------------------- Bot 4 ----
+#
+# Every tile is a race between the bot and the fire:
+#     k = how many moves the bot needs to get there
+#     d = how many tiles the fire has to travel to get there
+# Along one route the fire's front moves forward one tile per step with
+# probability q, so in k steps it moves forward Binomial(k, q) tiles. If
+# P(Binomial(k, q) >= d) > THRESHOLD, the fire will probably get there first,
+# and the tile counts as "predicted fire".
+#
+# Then A* to the button, where stepping onto a tile costs:
+#     infinity        if it is burning now
+#     1 + PENALTY     if it is predicted fire
+#     1               otherwise
+
+radius_tables = {}   # saved tables, so each one is only worked out once
+
+
+def danger_radius(q, threshold, max_steps):
+    """radius[k] = the largest fire distance d with P(Binomial(k, q) >= d) > threshold,
+    for k = 0 to max_steps. A tile the bot reaches in k moves is predicted fire
+    when the fire's distance to it is at most radius[k]."""
+    if (q, threshold, max_steps) in radius_tables:
+        return radius_tables[(q, threshold, max_steps)]
+
+    pmf = [0.0] * (max_steps + 1)   # pmf[j] = P(the fire has moved forward exactly j tiles)
+    pmf[0] = 1.0
+    radius = []
+    for k in range(max_steps + 1):
+        if k > 0:
+            # One more step: the fire either stays (chance 1 - q) or moves forward one tile (chance q).
+            for j in range(k, 0, -1):
+                pmf[j] = pmf[j] * (1 - q) + pmf[j - 1] * q
+            pmf[0] = pmf[0] * (1 - q)
+
+        # Add up P(at least d) from the top; the first d above the threshold is the largest one.
+        total = 0.0
+        largest = -1
+        for d in range(k, -1, -1):
+            total += pmf[d]
+            if total > threshold:
+                largest = d
+                break
+        radius.append(largest)
+
+    radius_tables[(q, threshold, max_steps)] = radius
+    return radius
+
+
+def predicted_fire(ship, pos, button, q, threshold):
+    """The set of tiles Bot 4 thinks the fire will reach before the bot does."""
+    fire = ship.fire_cells()
+    fire_dist = distance_map(ship, fire, set())   # d for every tile
+    bot_dist = distance_map(ship, [pos], fire)    # k for every tile
+    radius = danger_radius(q, threshold, ship.D * ship.D)
+
+    danger = set()
+    for r, c in ship.open_cells():
+        if ship.grid[r][c].on_fire or bot_dist[r][c] == math.inf:
+            continue
+        k = bot_dist[r][c]
+        if (r, c) == button:
+            k = k - 1   # the button is pressed before the fire moves
+        if fire_dist[r][c] <= radius[k]:
+            danger.add((r, c))
+    return danger
+
+
+def bot4_path(ship, pos, button, q, threshold=THRESHOLD, penalty=PENALTY):
+    """Bot 4: A* to the button, avoiding burning tiles and paying extra for
+    predicted-fire tiles."""
+    danger = predicted_fire(ship, pos, button, q, threshold)
+    cost = [[1.0] * ship.D for r in range(ship.D)]
+    for r in range(ship.D):
+        for c in range(ship.D):
+            if ship.grid[r][c].on_fire:
+                cost[r][c] = math.inf
+            elif (r, c) in danger:
+                cost[r][c] = 1.0 + penalty
+    return a_star(ship, pos, button, cost)

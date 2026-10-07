@@ -1,168 +1,128 @@
-"""Running a bot on a trial.
-
-A TRIAL is one complete setup: a ship, the flammability q, the bot's start,
-the button, the fire's first tile, and the random generator the fire will use.
-
-ONE TIME STEP (the order the assignment specifies)
-    1. The bot decides where to go and moves there.
-    2. If it moved onto a burning tile, it fails ("entered_fire").
-    3. If it is on the button, it presses it and wins ("success").
-    4. Otherwise the fire spreads once.
-    5. If the fire reached the bot's tile, it fails ("caught").
-    6. If the fire reached the button, nobody can press it any more, so the
-       trial ends as a certain loss ("button_burned").
-    A bot that has no route left ends the trial too ("trapped"): every route
-    to the button runs through fire, and the fire never goes out.
-
-EVERY BOT FACES THE SAME FIRE
-    The fire never reacts to the bot, so if two runs start the fire's random
-    generator from the same point, they get exactly the same fire. Each run
-    takes a fresh copy of the trial's generator (Trial.start), so all the bots
-    on a trial face the same fire. Differences between bots then come from
-    their decisions, not from luck. (The instructor's guidance suggests
-    exactly this: run the bots against the same fire progression.)
-"""
+"""Running one bot on one trial."""
 import copy
 import time
 
-from fire import spread_chances, spread_fire
-from planning import bfs_distances, fire_distances, fireproof_path
-from ship import Ship
-
-SUCCESS = "success"
-ENTERED_FIRE = "entered_fire"    # the bot stepped onto a burning tile
-CAUGHT = "caught"                # the fire spread onto the bot's tile
-BUTTON_BURNED = "button_burned"  # the button caught fire before the bot got there
-TRAPPED = "trapped"              # the bot is alive, but every route to the button is on fire
-TIMEOUT = "timeout"              # safety cap, should not happen
+from bots import bot1_path, bot2_path, bot3_path, bot4_path
+from fire import spread_fire
+from search import distance_map, fireproof_path
+from ship import generate_ship
 
 
 class Trial:
-    """One configuration. Every bot is run on the same Trial."""
+    """One setup: a ship, where the bot, the button and the first fire start,
+    and the random numbers the fire will use."""
 
-    def __init__(self, ship, q, bot_start, button, fire_start, fire_rng):
-        self.ship = ship
+    def __init__(self, D, q, rng):
         self.q = q
-        self.bot_start = bot_start
-        self.button = button
-        self.fire_start = fire_start
-        # Our own copy of the generator, so nothing outside can move it on.
-        self.fire_rng = copy.deepcopy(fire_rng)
-
-    @classmethod
-    def generate(cls, D, q, rng):
-        """A random trial: a new ship, then three different random open tiles
-        for the bot, the button and the fire. The fire then keeps drawing from
-        the same generator."""
-        ship = Ship.generate(D, rng)
-        cells = ship.open_cells()
-        picks = rng.choice(len(cells), size=3, replace=False)
-        bot, button, fire = (cells[i] for i in picks)
-        return cls(ship, q, bot, button, fire, rng)
-
-    @property
-    def max_steps(self):
-        return 10 * len(self.ship.open_cells())
-
-    def start(self):
-        """Put the ship in its starting state: bot, button and the first fire
-        tile in place, nothing else burning. Returns a fresh copy of the fire's
-        random generator, so this run's fire is the same as every other run's."""
-        self.ship.clear()
-        self.ship.tile(self.bot_start).has_bot = True
-        self.ship.tile(self.button).has_button = True
-        self.ship.tile(self.fire_start).on_fire = True
-        return copy.deepcopy(self.fire_rng)
-
-    def fireproof(self):
-        """True if the bot can win for certain from the start: some path to
-        the button stays ahead of even the fastest possible fire (q = 1).
-        Decided with two BFSs and no simulation."""
-        fire_dist = fire_distances(self.ship, [self.fire_start])
-        return fireproof_path(self.ship, self.bot_start, self.button, fire_dist) is not None
+        self.ship = generate_ship(D, rng)
+        cells = self.ship.open_cells()
+        picks = rng.choice(len(cells), size=3, replace=False)   # three different open tiles
+        self.bot_start = cells[picks[0]]
+        self.button = cells[picks[1]]
+        self.fire_start = cells[picks[2]]
+        # Save the random generator as it is now. Every run of this trial
+        # starts the fire from a copy of it, so every bot faces the same fire.
+        self.fire_rng = copy.deepcopy(rng)
 
 
-class Outcome:
-    """How one bot did on one trial."""
-
-    def __init__(self, success, reason, steps, path=None, deviations=0, think_ms=0.0):
-        self.success = success          # True if the button was pressed
-        self.reason = reason            # one of the constants above
-        self.steps = steps              # moves made
-        self.path = path if path is not None else []   # positions visited (if recorded)
-        # Moves Bot 2's rule would never make: ones that don't shorten the
-        # distance to the button through tiles that aren't burning.
-        self.deviations = deviations
-        self.think_ms = think_ms        # time spent inside the bot's reset() and act()
+def reset_trial(trial):
+    """Put the bot, the button and the first fire back where they start, with
+    nothing else burning. Returns a fresh copy of the fire's random generator."""
+    ship = trial.ship
+    ship.clear()
+    ship.tile(trial.bot_start).has_bot = True
+    ship.tile(trial.button).has_button = True
+    ship.tile(trial.fire_start).on_fire = True
+    return copy.deepcopy(trial.fire_rng)
 
 
-def run_bot(trial, bot, record_path=False, count_deviations=False):
-    """Run one bot on one trial, in the order described at the top of this file.
+def run_bot(trial, bot):
+    """Run Bot 1, 2, 3 or 4 on a trial. Each time step, in order:
+    the bot decides and moves; if it is on the button it wins; otherwise the
+    fire spreads, and the bot fails if the fire reaches it or the button.
 
-    With count_deviations, also count the moves that Bot 2's rule could not
-    have made (see Outcome.deviations). That is how we check whether Bots 3
-    and 4 ever actually decide differently from Bot 2."""
+    Returns a dictionary with:
+        success     True if the button was pressed
+        reason      success, entered_fire, caught, button_burned, trapped or timeout
+        steps       how many moves the bot made
+        path        every position the bot was on
+        deviations  moves Bot 2's rule could not have made
+        ms          time spent deciding, in milliseconds
+    """
     ship = trial.ship
     button = trial.button
-    fire_rng = trial.start()
-    chance = spread_chances(trial.q)
+    fire_rng = reset_trial(trial)
     pos = trial.bot_start
     path = [pos]
+    plan = None
     deviations = 0
-    t0 = time.perf_counter()
-    bot.reset(ship, button, trial.q)
-    think = time.perf_counter() - t0
-    t = 0   # number of fire updates so far
+    think_time = 0.0
+    max_steps = 10 * len(ship.open_cells())   # safety limit, never reached
+    reason = "timeout"
 
-    def done(success, reason, steps):
-        return Outcome(success, reason, steps, path, deviations, think * 1000)
-
-    while t < trial.max_steps:
+    for t in range(max_steps):
         # 1. The bot decides.
-        t0 = time.perf_counter()
-        nxt = bot.act(pos)
-        think += time.perf_counter() - t0
-        if nxt is None:
-            return done(False, TRAPPED, t)
-        if nxt != pos and nxt not in ship.neighbors(pos):
-            raise RuntimeError(f"{bot.name} made an illegal move {pos} -> {nxt}")
-        if count_deviations:
-            dist = bfs_distances(ship, button, restricted=ship.fire_cells())
-            if dist[nxt[0]][nxt[1]] != dist[pos[0]][pos[1]] - 1:
-                deviations += 1
+        start = time.perf_counter()
+        if bot == 1:
+            if t == 0:
+                plan = bot1_path(ship, pos, button)   # Bot 1 only plans once
+        elif bot == 2:
+            plan = bot2_path(ship, pos, button)
+        elif bot == 3:
+            plan = bot3_path(ship, pos, button)
+        else:
+            plan = bot4_path(ship, pos, button, trial.q)
+        think_time += time.perf_counter() - start
 
-        # 2-3. The bot moves.
+        if plan is None:
+            reason = "trapped"   # every route to the button runs through fire
+            break
+        if bot == 1:
+            next_pos = plan[t + 1]   # Bot 1 just follows its first plan
+        else:
+            next_pos = plan[1]
+
+        # Was this a move Bot 2's rule could have made? Bot 2 always moves one
+        # step closer to the button along tiles that aren't burning.
+        to_button = distance_map(ship, [button], ship.fire_cells())
+        r, c = pos
+        nr, nc = next_pos
+        if to_button[nr][nc] != to_button[r][c] - 1:
+            deviations += 1
+
+        # 2. The bot moves.
         ship.tile(pos).has_bot = False
-        pos = nxt
+        pos = next_pos
         ship.tile(pos).has_bot = True
-        if record_path:
-            path.append(pos)
+        path.append(pos)
         if ship.tile(pos).on_fire:
-            return done(False, ENTERED_FIRE, t + 1)
+            reason = "entered_fire"
+            break
         if pos == button:
-            return done(True, SUCCESS, t + 1)
+            reason = "success"
+            break
 
-        # 4-6. The fire spreads, then check the bot and the button.
-        spread_fire(ship, chance, fire_rng)
-        t += 1
+        # 3. The fire spreads.
+        spread_fire(ship, trial.q, fire_rng)
         if ship.tile(pos).on_fire:
-            return done(False, CAUGHT, t)
+            reason = "caught"
+            break
         if ship.tile(button).on_fire:
-            return done(False, BUTTON_BURNED, t)
-    return done(False, TIMEOUT, t)
+            reason = "button_burned"   # nobody can press it any more
+            break
+
+    return {
+        "success": reason == "success",
+        "reason": reason,
+        "steps": len(path) - 1,
+        "path": path,
+        "deviations": deviations,
+        "ms": think_time * 1000,
+    }
 
 
-def fire_history(trial, steps):
-    """ignite[r][c] = the update at which tile (r, c) caught fire (0 for the
-    first fire tile), or None if it hasn't burned within `steps` updates.
-    Used to draw pictures of a trial."""
-    ship = trial.ship
-    fire_rng = trial.start()
-    chance = spread_chances(trial.q)
-    ignite = [[None] * ship.D for r in range(ship.D)]
-    r, c = trial.fire_start
-    ignite[r][c] = 0
-    for t in range(1, steps + 1):
-        for r, c in spread_fire(ship, chance, fire_rng):
-            ignite[r][c] = t
-    return ignite
+def is_certain_win(trial):
+    """True if the bot has a path that even the fastest possible fire (q = 1)
+    can't catch, so it is going to win whatever happens. Two BFSs, no simulation."""
+    fire_dist = distance_map(trial.ship, [trial.fire_start], set())
+    return fireproof_path(trial.ship, trial.bot_start, trial.button, fire_dist) is not None

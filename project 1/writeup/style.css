@@ -1,7 +1,7 @@
 /* Print style for the writeup (pandoc HTML -> Chromium PDF). */
 :root { color-scheme: light; }
 body {
-  font-family: "Charter", "Bitstream Charter", "Liberation Serif", serif;
+  font-family: "Liberation Serif", "Times New Roman", Times, serif;
   font-size: 10pt;
   line-height: 1.38;
   color: #111;

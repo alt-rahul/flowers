@@ -5,12 +5,12 @@ author: "Your Name (NetID)"
 
 # 1. Implementation and Bot 4 (Question 1)
 
-I wrote everything in Python and kept it modular, since all four bots are
-really the same thing with a different way of choosing a path. The ship lives
-in `ship.py`, the fire in `fire.py`, the search algorithms in `planning.py`, the
-four path-choosing strategies in `planners.py`, a single `Bot` class in
-`bots.py`, the simulation loop in `simulation.py`, and the experiment and
-analysis scripts in `experiments.py`, `analyze.py` and `figures.py`.
+I wrote everything in Python and kept the structure simple, with one file for
+each step in the order things happen: `ship.py` builds the ship, `fire.py`
+spreads the fire, `search.py` has BFS and A\*, `bots.py` has one function per
+bot that returns the path it wants to take, `simulation.py` runs one bot on one
+trial, `experiments.py` runs every bot on thousands of trials and saves the
+results, and `analysis.py` and `pictures.py` make the tables and figures.
 
 As in my original plan, the ship is a $D \times D$ grid of `Tile` objects, and
 each tile tracks whether it is open or blocked, whether it is on fire, whether
@@ -50,12 +50,11 @@ reached along a shortest path, and the cells the bot wants to avoid are the
 restricted states. I added one line to the lecture version: a child already in
 `prev` is already on the fringe, so it isn't added a second time. Without that
 line a cell's `prev` gets overwritten by later parents, which changes which of
-several equally short paths BFS returns. A bot is then just a name, a planner
-function that returns a path to the button, and a flag for whether to call the
-planner again every step. Bots 1 and 2 share the same planner (BFS avoiding the
-burning cells); Bot 1 calls it once at the start and Bot 2 every step. Bot 3's
-planner avoids burning cells and their neighbours, and when no such path exists
-it simply calls Bot 2's planner.
+several equally short paths BFS returns. Bots 1 and 2 both run BFS avoiding
+the burning cells: Bot 1 does it once at the start and then follows that plan,
+and Bot 2 does it again every step and takes the first step of the new plan.
+Bot 3 runs BFS avoiding the burning cells and every cell next to them, and when
+no such path exists it does what Bot 2 does.
 
 Bot 2 avoids where the fire *is*. But the bot doesn't really care where the
 fire is right now; it cares whether the fire will be on a cell *when the bot
@@ -172,8 +171,8 @@ $K \ge 1$, so that rule can only ever flag cells inside Bot 3's buffer (and with
 one burning neighbour, only when $q > 0.6$), which makes it Bot 3 with a
 thinner buffer, and at low $q$ it would never flag anything and would just be
 Bot 2. The race asks the same question, "will this cell be on fire?", but at
-the time that matters, when the bot would actually get there. I kept the
-literal rule as a variant to test it, and it did no better than Bot 2. Third,
+the time that matters, when the bot would actually get there. I tested the
+literal rule as a variant, and it did no better than Bot 2. Third,
 the fire can only spread through open cells, so $d(c)$ is measured through the
 maze rather than with the Manhattan distance (the Manhattan version was slightly
 worse in tuning, within the noise, and slower). My plan also said the heuristic
@@ -207,21 +206,21 @@ the same precision on a difference. And trials run in parallel on every core,
 with each trial's random seed depending only on (seed, $q$, trial number), so
 the results don't depend on how the work is split up and any single trial can
 be replayed. Table 1 shows how long each bot spends deciding. A whole trial with
-all four bots takes about a second on one core, so the main run of 83,000 trials
-took several hours on 4 cores.
+all four bots takes about 0.3 s on one core of my laptop, so the 83,000 trials
+of the main run take under two hours on 4 cores.
 
-Table: Table 1: Mean time each bot spends deciding at $D = 50$ (175 trials, $q$ from 0.1 to 0.7).
+Table: Table 1: Mean time each bot spends deciding at $D = 50$ on my laptop (175 trials, $q$ from 0.1 to 0.7).
 
 | | Bot 1 | Bot 2 | Bot 3 | Bot 4 |
 |---|---|---|---|---|
-| Per move | 23 µs | 514 µs | 584 µs | 3.0 ms |
-| Per trial | 0.8 ms | 20 ms | 23 ms | 120 ms |
+| Per move | 7 µs | 185 µs | 217 µs | 1.7 ms |
+| Per trial | 0.3 ms | 7 ms | 8.5 ms | 66 ms |
 | Work per move | one BFS at the start, then none | one BFS | one or two BFSs | two BFSs, a pass over the cells, A\* |
 
 # 2. Experiments and results (Question 2)
 
-For the main experiment I used $D = 50$, which kept the full run to several
-hours on four cores, and generated a fresh ship for every trial. I first ran
+For the main experiment I used $D = 50$, which kept the full run to a couple
+of hours on four cores, and generated a fresh ship for every trial. I first ran
 1,000 trials at every $q$ from 0 to 1 in steps of 0.05. That showed that below
 $q \approx 0.1$ Bots 2-4 win about 98% of trials or more and are within a few
 tenths of a point of each other, and that above $q \approx 0.75$ all four bots
@@ -467,7 +466,7 @@ with Monte Carlo rollouts of both the fire and the bot, would capture things
 like preferring a cell from which two different routes reach the button.
 
 All of that costs time, and in reality the fire would keep spreading while the
-bot thinks. Bot 4 already spends about 3 ms per move against Bot 2's 0.5 ms, and
+bot thinks. Bot 4 already spends about 1.7 ms per move against Bot 2's 0.2 ms, and
 the steps above would cost far more. My data say where that time is worth
 spending. When the outcome is already decided, thinking is wasted: in the
 certain-win trials (half of all trials) the shortest path wins anyway, and when
