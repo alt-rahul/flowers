@@ -38,7 +38,12 @@ def remove_from_list(items, item):
 class Ship:
     def __init__(self, D):
         self.D = D
-        self.grid = [[Tile() for c in range(D)] for r in range(D)]   # every tile starts blocked
+        self.grid = []   # every tile starts blocked
+        for r in range(D):
+            row = []
+            for c in range(D):
+                row.append(Tile())
+            self.grid.append(row)
 
     def tile(self, pos):
         r, c = pos

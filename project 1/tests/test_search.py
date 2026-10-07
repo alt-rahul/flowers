@@ -48,12 +48,19 @@ def test_bfs_avoids_restricted_tiles():
             assert is_valid_path(ship, path, start, goal, restricted)
 
 
+def all_ones(D):
+    cost = []
+    for r in range(D):
+        cost.append([1.0] * D)
+    return cost
+
+
 def test_a_star_with_equal_costs_finds_a_shortest_path():
     for seed in range(10):
         rng = np.random.default_rng(seed)
         ship = generate_ship(20, rng)
         start, goal = two_random_tiles(ship, rng)
-        cost = [[1.0] * ship.D for r in range(ship.D)]
+        cost = all_ones(ship.D)
         path = a_star(ship, start, goal, cost)
         assert is_valid_path(ship, path, start, goal, set())
         assert len(path) - 1 == distance_map(ship, [start], set())[goal[0]][goal[1]]
@@ -81,7 +88,7 @@ def test_a_star_finds_the_cheapest_path():
         ship = generate_ship(20, rng)
         start, goal = two_random_tiles(ship, rng)
         # Costs like Bot 4's: mostly 1, some 21, a few that can't be entered.
-        cost = [[1.0] * ship.D for r in range(ship.D)]
+        cost = all_ones(ship.D)
         for r in range(ship.D):
             for c in range(ship.D):
                 roll = rng.random()
@@ -96,7 +103,10 @@ def test_a_star_finds_the_cheapest_path():
             assert path is None
         else:
             assert is_valid_path(ship, path, start, goal, set())
-            assert sum(cost[r][c] for r, c in path[1:]) == expected
+            total = 0
+            for r, c in path[1:]:
+                total += cost[r][c]
+            assert total == expected
 
 
 def test_manhattan_distance_never_overestimates():

@@ -138,9 +138,13 @@ def test_race_model_matches_the_real_fire_on_a_corridor():
             spread_fire(ship, q, rng)
             for d in [1, 3, 6, 10]:
                 if ship.tile((0, d)).on_fire:
-                    burning[(t, d)] = burning.get((t, d), 0) + 1
+                    if (t, d) not in burning:
+                        burning[(t, d)] = 0
+                    burning[(t, d)] += 1
     for t in [5, 10, 15]:
         for d in [1, 3, 6, 10]:
             expected = fire_arrival_probability(t, d, q)
-            seen = burning.get((t, d), 0) / runs
+            seen = 0
+            if (t, d) in burning:
+                seen = burning[(t, d)] / runs
             assert abs(seen - expected) < 4 * math.sqrt(expected * (1 - expected) / runs) + 0.001

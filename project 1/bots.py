@@ -109,11 +109,15 @@ def bot4_path(ship, pos, button, q, threshold=THRESHOLD, penalty=PENALTY):
     """Bot 4: A* to the button, avoiding burning tiles and paying extra for
     predicted-fire tiles."""
     danger = predicted_fire(ship, pos, button, q, threshold)
-    cost = [[1.0] * ship.D for r in range(ship.D)]
+    cost = []
     for r in range(ship.D):
+        row = []
         for c in range(ship.D):
             if ship.grid[r][c].on_fire:
-                cost[r][c] = math.inf
+                row.append(math.inf)
             elif (r, c) in danger:
-                cost[r][c] = 1.0 + penalty
+                row.append(1.0 + penalty)
+            else:
+                row.append(1.0)
+        cost.append(row)
     return a_star(ship, pos, button, cost)

@@ -50,7 +50,9 @@ def distance_map(ship, starts, restricted):
 
     The same BFS with no goal: it runs until the fringe is empty. For the fire,
     starts is every burning tile at once."""
-    dist = [[math.inf] * ship.D for r in range(ship.D)]
+    dist = []
+    for r in range(ship.D):
+        dist.append([math.inf] * ship.D)
     fringe = deque()
     for r, c in starts:
         dist[r][c] = 0

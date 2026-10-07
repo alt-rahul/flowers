@@ -2,8 +2,8 @@
 
     python analysis.py
 
-Reads results/main.csv.gz, results/size.csv.gz and results/tuning.csv.gz,
-saves the charts in plots/ and the tables in results/summary.md.
+Reads the results in results/, saves the charts in plots/ and the tables in
+results/summary.md.
 """
 import csv
 import gzip
@@ -12,17 +12,14 @@ import math
 import matplotlib
 matplotlib.use("Agg")   # save charts to files without opening a window
 import matplotlib.pyplot as plt
-import numpy as np
 
 BOTS = ["bot1", "bot2", "bot3", "bot4"]
 NAMES = {"bot1": "Bot 1", "bot2": "Bot 2", "bot3": "Bot 3", "bot4": "Bot 4"}
-COLORS = {"bot1": "#2a78d6", "bot2": "#eb6834", "bot3": "#1baf7a", "bot4": "#4a3aa7"}
-MARKERS = {"bot1": "o", "bot2": "s", "bot3": "^", "bot4": "D"}
+COLORS = {"bot1": "blue", "bot2": "orange", "bot3": "green", "bot4": "red"}
 
 REASONS = ["entered_fire", "caught", "button_burned", "trapped"]
 REASON_NAMES = {"entered_fire": "walked into fire", "caught": "fire spread onto bot",
                 "button_burned": "button burned first", "trapped": "cut off from button"}
-REASON_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7"]
 
 report = []   # the lines of results/summary.md
 
@@ -61,71 +58,107 @@ def success_rate(trials, q, bot):
 
 
 def paired_difference(trials, q, bot_a, bot_b):
-    """bot_a's success rate minus bot_b's on the same trials, with a 95%
-    confidence interval. Both bots faced the same fire on every trial."""
+    """bot_a's success rate minus bot_b's on the same trials, and the size of
+    its 95% confidence interval. Both bots faced the same fire on every trial,
+    so each trial gives a difference of -1, 0 or 1."""
     diffs = []
     for results in trials[q].values():
         diffs.append(results[bot_a]["success"] - results[bot_b]["success"])
-    mean = np.mean(diffs)
-    error = 1.96 * np.std(diffs, ddof=1) / math.sqrt(len(diffs))
+    n = len(diffs)
+    mean = sum(diffs) / n
+    total = 0
+    for d in diffs:
+        total += (d - mean) ** 2
+    standard_deviation = math.sqrt(total / (n - 1))
+    error = 1.96 * standard_deviation / math.sqrt(n)
     return mean, error
 
 
 def certain_win_share(trials, q):
+    """The share of trials at q that were a certain win from the start."""
     count = 0
     for results in trials[q].values():
         count += results["bot1"]["fireproof"]
     return count / len(trials[q])
 
 
+def failure_counts(trials, bot):
+    """How many times the bot failed for each reason, over every q."""
+    counts = {}
+    for reason in REASONS:
+        counts[reason] = 0
+    for q in trials:
+        for results in trials[q].values():
+            reason = results[bot]["reason"]
+            if reason in counts:
+                counts[reason] += 1
+    return counts
+
+
 def save_chart(name):
-    plt.savefig(f"plots/{name}", dpi=120, bbox_inches="tight")
+    plt.savefig("plots/" + name, dpi=120, bbox_inches="tight")
     plt.close()
 
 
 # ------------------------------------------------------------- charts ----
 
-def plot_centerpiece(trials):
+def plot_success_rate(trials):
     qs = sorted(trials)
-
-    # The q values where Bot 4 beats both Bot 2 and Bot 3 with 95% confidence.
-    ahead = []
-    for q in qs:
-        diff2, error2 = paired_difference(trials, q, "bot4", "bot2")
-        diff3, error3 = paired_difference(trials, q, "bot4", "bot3")
-        if diff2 - error2 > 0 and diff3 - error3 > 0:
-            ahead.append(q)
-
-    fig, (top, bottom) = plt.subplots(2, 1, figsize=(8, 9), sharex=True)
+    plt.figure(figsize=(8, 5))
     for bot in BOTS:
-        rates = [success_rate(trials, q, bot)[0] for q in qs]
-        top.plot(qs, rates, marker=MARKERS[bot], markersize=4, color=COLORS[bot], label=NAMES[bot])
-    top.plot(qs, [certain_win_share(trials, q) for q in qs], "k--", label="Certain win from the start")
-    top.axvspan(min(ahead), max(ahead), color="grey", alpha=0.15,
-                label="Bot 4 ahead of Bots 2 and 3 (95%)")
-    top.set_ylabel("Success rate")
-    top.set_title("Success rate vs flammability q")
-    top.legend()
-    top.grid(alpha=0.3)
+        rates = []
+        for q in qs:
+            rate, error = success_rate(trials, q, bot)
+            rates.append(100 * rate)
+        plt.plot(qs, rates, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
 
+    certain = []
+    for q in qs:
+        certain.append(100 * certain_win_share(trials, q))
+    plt.plot(qs, certain, "k--", label="Certain win from the start")
+
+    plt.xlabel("Flammability q")
+    plt.ylabel("Success rate (%)")
+    plt.title("Success rate vs flammability q")
+    plt.legend()
+    plt.grid()
+    save_chart("success_rate.png")
+
+
+def plot_bot4_advantage(trials):
+    qs = sorted(trials)
+    plt.figure(figsize=(8, 5))
     for bot in ["bot1", "bot2", "bot3"]:
         diffs = []
-        errors = []
         for q in qs:
             diff, error = paired_difference(trials, q, "bot4", bot)
             diffs.append(100 * diff)
-            errors.append(100 * error)
-        bottom.errorbar(qs, diffs, yerr=errors, marker=MARKERS[bot], markersize=4, capsize=2,
-                        color=COLORS[bot], label=f"Bot 4 minus {NAMES[bot]}")
-    bottom.axhline(0, color="black", linewidth=1)
-    bottom.axvspan(min(ahead), max(ahead), color="grey", alpha=0.15)
-    bottom.set_xlabel("Flammability q")
-    bottom.set_ylabel("Difference (points)")
-    bottom.set_title("Bot 4's advantage on the same trials (95% CI)")
-    bottom.legend()
-    bottom.grid(alpha=0.3)
-    fig.tight_layout()
-    save_chart("centerpiece.png")
+        plt.plot(qs, diffs, marker="o", markersize=3, color=COLORS[bot],
+                 label="Bot 4 minus " + NAMES[bot])
+    plt.axhline(0, color="black")
+    plt.xlabel("Flammability q")
+    plt.ylabel("Difference in success rate (points)")
+    plt.title("How much better Bot 4 does, on the same trials")
+    plt.legend()
+    plt.grid()
+    save_chart("bot4_advantage.png")
+
+
+def plot_ship_size(trials_by_size):
+    qs = sorted(trials_by_size[25])   # the q values every size was run at
+    plt.figure(figsize=(8, 5))
+    for D in [25, 50, 100]:
+        rates = []
+        for q in qs:
+            rate, error = success_rate(trials_by_size[D], q, "bot4")
+            rates.append(100 * rate)
+        plt.plot(qs, rates, marker="o", label=f"D = {D}")
+    plt.xlabel("Flammability q")
+    plt.ylabel("Bot 4's success rate (%)")
+    plt.title("Bot 4 on three ship sizes")
+    plt.legend()
+    plt.grid()
+    save_chart("ship_size.png")
 
 
 def plot_divergence(trials):
@@ -139,95 +172,63 @@ def plot_divergence(trials):
             for results in trials[q].values():
                 if results[bot]["deviations"] > 0:
                     count += 1
-            shares.append(count / len(trials[q]))
-        plt.plot(qs, shares, marker=MARKERS[bot], markersize=4, color=COLORS[bot], label=NAMES[bot])
+            shares.append(100 * count / len(trials[q]))
+        plt.plot(qs, shares, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
     plt.xlabel("Flammability q")
-    plt.ylabel("Share of trials")
-    plt.title("How often a bot leaves Bot 2's rule at least once")
+    plt.ylabel("Trials (%)")
+    plt.title("How often a bot makes a move Bot 2 wouldn't")
     plt.legend()
-    plt.grid(alpha=0.3)
+    plt.grid()
     save_chart("divergence.png")
 
 
-def plot_failure_reasons(trials, low_q, high_q):
-    """Why each bot fails, as a share of all trials with low_q <= q <= high_q."""
-    plt.figure(figsize=(8, 5))
-    bottoms = [0.0, 0.0, 0.0, 0.0]
-    for i in range(len(REASONS)):
-        reason = REASONS[i]
-        heights = []
-        for bot in BOTS:
-            failed = 0
-            total = 0
-            for q in trials:
-                if low_q <= q <= high_q:
-                    for results in trials[q].values():
-                        total += 1
-                        if results[bot]["reason"] == reason:
-                            failed += 1
-            heights.append(failed / total)
-        plt.bar([NAMES[bot] for bot in BOTS], heights, bottom=bottoms, color=REASON_COLORS[i],
-                edgecolor="white", linewidth=1.5, label=REASON_NAMES[reason])
-        for j in range(len(BOTS)):
-            bottoms[j] += heights[j]
-    plt.ylabel("Share of all trials")
-    plt.title(f"Why bots fail (q = {low_q:g} to {high_q:g})")
-    plt.legend(loc="upper left", bbox_to_anchor=(1, 1))
+def plot_failure_reasons(trials):
+    """One bar chart per bot: how its failures break down."""
+    labels = ["walked\ninto fire", "fire spread\nonto bot", "button\nburned first", "cut off\nfrom button"]
+    plt.figure(figsize=(10, 7))
+    for i in range(len(BOTS)):
+        bot = BOTS[i]
+        counts = failure_counts(trials, bot)
+        failures = 0
+        for reason in REASONS:
+            failures += counts[reason]
+        shares = []
+        for reason in REASONS:
+            shares.append(100 * counts[reason] / failures)
+        plt.subplot(2, 2, i + 1)
+        plt.bar(labels, shares, color=COLORS[bot])
+        plt.ylim(0, 60)
+        plt.ylabel("Share of failures (%)")
+        plt.title(NAMES[bot])
+    plt.tight_layout()
     save_chart("failure_reasons.png")
 
 
 def plot_head_to_head(trials):
-    """Per q, out of every 1,000 trials: how many Bot 4 won while the other
-    bot lost, and the other way round."""
+    """Out of every 1,000 trials at each q: how many Bot 4 won while Bot 3
+    lost, and how many Bot 3 won while Bot 4 lost."""
     qs = sorted(trials)
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True)
-    for ax, other in zip(axes, ["bot2", "bot3"]):
-        bot4_won = []
-        other_won = []
-        for q in qs:
-            a = 0
-            b = 0
-            for results in trials[q].values():
-                if results["bot4"]["success"] and not results[other]["success"]:
-                    a += 1
-                if results[other]["success"] and not results["bot4"]["success"]:
-                    b += 1
-            bot4_won.append(1000 * a / len(trials[q]))
-            other_won.append(1000 * b / len(trials[q]))
-        ax.plot(qs, bot4_won, marker=MARKERS["bot4"], markersize=4, color=COLORS["bot4"],
-                label=f"Bot 4 won, {NAMES[other]} lost")
-        ax.plot(qs, other_won, marker=MARKERS[other], markersize=4, color=COLORS[other],
-                label=f"{NAMES[other]} won, Bot 4 lost")
-        ax.set_title(f"Bot 4 against {NAMES[other]}, same trials")
-        ax.set_xlabel("Flammability q")
-        ax.grid(alpha=0.3)
-        ax.legend()
-    axes[0].set_ylabel("Trials per 1,000")
-    save_chart("head_to_head.png")
-
-
-def plot_ship_size(trials_by_size):
-    """Bot 4's success rate on each ship size."""
+    bot4_won = []
+    bot3_won = []
+    for q in qs:
+        a = 0
+        b = 0
+        for results in trials[q].values():
+            if results["bot4"]["success"] and not results["bot3"]["success"]:
+                a += 1
+            if results["bot3"]["success"] and not results["bot4"]["success"]:
+                b += 1
+        bot4_won.append(1000 * a / len(trials[q]))
+        bot3_won.append(1000 * b / len(trials[q]))
     plt.figure(figsize=(8, 5))
-    shades = ["#9a91d0", "#6c5fc0", "#4a3aa7"]
-    sizes = sorted(trials_by_size)
-    for i in range(len(sizes)):
-        D = sizes[i]
-        qs = sorted(trials_by_size[25])   # the q values every size was run at
-        rates = []
-        errors = []
-        for q in qs:
-            rate, error = success_rate(trials_by_size[D], q, "bot4")
-            rates.append(rate)
-            errors.append(error)
-        plt.errorbar(qs, rates, yerr=errors, marker="o", markersize=4, capsize=2,
-                     color=shades[i], label=f"D = {D}")
+    plt.plot(qs, bot4_won, marker="o", markersize=3, color=COLORS["bot4"], label="Bot 4 won, Bot 3 lost")
+    plt.plot(qs, bot3_won, marker="o", markersize=3, color=COLORS["bot3"], label="Bot 3 won, Bot 4 lost")
     plt.xlabel("Flammability q")
-    plt.ylabel("Bot 4's success rate")
-    plt.title("Bot 4 on three ship sizes (95% CI)")
+    plt.ylabel("Trials per 1,000")
+    plt.title("Bot 4 against Bot 3, on the same trials")
     plt.legend()
-    plt.grid(alpha=0.3)
-    save_chart("ship_size.png")
+    plt.grid()
+    save_chart("head_to_head.png")
 
 
 # The Bot 4 settings tried in tuning, as they are named in results/tuning.csv.gz.
@@ -250,29 +251,33 @@ TUNING_VARIANTS = [
 
 
 def tuning_difference(tuning, variant):
-    """The variant's success rate minus the chosen Bot 4's, over every tuning trial."""
+    """The variant's success rate minus the chosen Bot 4's over every tuning
+    trial, in points, and the size of its 95% confidence interval."""
     diffs = []
     for q in tuning:
         for results in tuning[q].values():
             diffs.append(results[variant]["success"] - results[TUNING_CHOSEN]["success"])
-    mean = 100 * np.mean(diffs)
-    error = 100 * 1.96 * np.std(diffs, ddof=1) / math.sqrt(len(diffs))
-    return mean, error
+    n = len(diffs)
+    mean = sum(diffs) / n
+    total = 0
+    for d in diffs:
+        total += (d - mean) ** 2
+    error = 1.96 * math.sqrt(total / (n - 1)) / math.sqrt(n)
+    return 100 * mean, 100 * error
 
 
 def plot_tuning(tuning):
-    plt.figure(figsize=(8, 5.5))
-    for y in range(len(TUNING_VARIANTS)):
-        variant, label = TUNING_VARIANTS[y]
+    labels = []
+    diffs = []
+    for variant, label in TUNING_VARIANTS:
         mean, error = tuning_difference(tuning, variant)
-        bot = variant[:4]   # "bot2", "bot3" or "bot4"
-        plt.errorbar(mean, y, xerr=error, marker=MARKERS[bot], markersize=6, capsize=3, color=COLORS[bot])
-    plt.axvline(0, color="black", linewidth=1)
-    plt.yticks(range(len(TUNING_VARIANTS)), [label for variant, label in TUNING_VARIANTS])
-    plt.gca().invert_yaxis()
+        labels.append(label)
+        diffs.append(mean)
+    plt.figure(figsize=(8, 5))
+    plt.barh(labels, diffs)
+    plt.axvline(0, color="black")
     plt.xlabel("Success rate minus the chosen Bot 4 (θ = 0.6, λ = 20), in points")
-    plt.title("Bot 4 tuning: 4,000 separate trials, 95% CI")
-    plt.grid(alpha=0.3, axis="x")
+    plt.title("Bot 4 tuning on 4,000 separate trials")
     save_chart("tuning.png")
 
 
@@ -320,13 +325,11 @@ def table_certain_wins(trials):
 
 def table_failures(trials):
     report.append("\n## Why bots fail (all q, share of each bot's failures)\n")
-    report.append("| Bot | Failures | " + " | ".join(REASON_NAMES[reason] for reason in REASONS)
-                  + " | another bot won the same trial |")
+    report.append("| Bot | Failures | walked into fire | fire spread onto bot | button burned first "
+                  "| cut off from button | another bot won the same trial |")
     report.append("|---|---|---|---|---|---|---|")
     for bot in BOTS:
-        counts = {}
-        for reason in REASONS:
-            counts[reason] = 0
+        counts = failure_counts(trials, bot)
         failures = 0
         saved = 0   # failures where another bot won, so a better decision existed
         for q in trials:
@@ -334,8 +337,6 @@ def table_failures(trials):
                 if results[bot]["success"]:
                     continue
                 failures += 1
-                if results[bot]["reason"] in counts:
-                    counts[results[bot]["reason"]] += 1
                 for other in BOTS:
                     if other != bot and results[other]["success"]:
                         saved += 1
@@ -386,7 +387,10 @@ def table_divergence(trials):
                         won += 1
                     if results["bot2"]["success"] and not results[bot]["success"]:
                         lost += 1
-            answer = "yes" if left else "no"
+            if left:
+                answer = "yes"
+            else:
+                answer = "no"
             report.append(f"| {NAMES[bot]} | {answer} | {count} | {won} | {lost} |")
 
 
@@ -430,7 +434,8 @@ def table_tuning(tuning):
     report.append("\n## Bot 4 tuning (4,000 separate trials, seed 7)\n")
     report.append("| Bot | Success | Minus the chosen Bot 4 (points) |")
     report.append("|---|---|---|")
-    for variant, label in [(TUNING_CHOSEN, "θ = 0.6, λ = 20 (chosen)")] + TUNING_VARIANTS:
+    variants = [(TUNING_CHOSEN, "θ = 0.6, λ = 20 (chosen)")] + TUNING_VARIANTS
+    for variant, label in variants:
         wins = 0
         count = 0
         for q in tuning:
@@ -450,11 +455,12 @@ def main():
     }
     tuning = load("results/tuning.csv.gz", 50)
 
-    plot_centerpiece(trials)
-    plot_divergence(trials)
-    plot_failure_reasons(trials, 0.2, 0.6)
-    plot_head_to_head(trials)
+    plot_success_rate(trials)
+    plot_bot4_advantage(trials)
     plot_ship_size(trials_by_size)
+    plot_divergence(trials)
+    plot_failure_reasons(trials)
+    plot_head_to_head(trials)
     plot_tuning(tuning)
 
     report.append("# Results\n")

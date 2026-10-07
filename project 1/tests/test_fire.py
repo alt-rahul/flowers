@@ -23,7 +23,10 @@ def test_fire_update_is_synchronous():
     rng = np.random.default_rng(0)
     for t in range(1, 8):
         new = spread_fire(ship, 1.0, rng)
-        assert ship.fire_cells() == {(7, c) for c in range(7 - t, 8 + t)}
+        expected = set()
+        for c in range(7 - t, 8 + t):
+            expected.add((7, c))
+        assert ship.fire_cells() == expected
         assert set(new) == {(7, 7 - t), (7, 7 + t)}
 
 
