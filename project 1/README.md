@@ -16,10 +16,10 @@ Each file is one step, in the order things happen:
 | `bots.py` | One function per bot that returns the path it wants to take. Bot 4's race model and its two settings (`THRESHOLD`, `PENALTY`) are here too. |
 | `simulation.py` | `Trial` (one ship with its start tiles and fire), `run_bot` (one bot on one trial, one time step at a time), and `is_certain_win`. |
 | `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`. |
-| `analysis.py` | Reads the saved results and makes the tables (`results/summary.md`) and charts. |
-| `pictures.py` | Draws the ship generation, Bot 4's danger radius, single trials and single Bot 4 decisions. |
+| `analysis.py` | Reads the saved results and makes the tables (`results/summary.md`) and the charts in `plots/`. |
+| `pictures.py` | Draws the ship generation, Bot 4's danger radius, single trials and single Bot 4 decisions, into `plots/`. |
 | `tests/` | Checks for each step (`python -m pytest`). |
-| `writeup/` | The writeup: `writeup.md`, built into `writeup.pdf` by `build.sh`. |
+| `writeup.md` | The writeup, with its figures in `plots/`. |
 
 ## Running it
 
@@ -30,8 +30,8 @@ Run everything from this folder:
 cd "project 1"
 python -m pytest          # 30 tests
 python experiments.py     # the main run (settings at the top of the file)
-python analysis.py        # tables and charts from the results
-python pictures.py        # the other pictures in the writeup
+python analysis.py        # tables (results/summary.md) and charts (plots/)
+python pictures.py        # the other pictures in plots/
 ```
 
 `experiments.py` overwrites `results/main.csv.gz`, and the main run takes
@@ -61,7 +61,7 @@ Every row of a results file is one bot on one trial:
   the code that could switch Bot 4's settings and two variants (the literal
   one-step 60% rule, and Manhattan distance for the fire); that version is in
   the git history.
-- `results/summary.md` and the `.png` files are made from those by
+- `results/summary.md` and the pictures in `plots/` are made from those by
   `analysis.py` and `pictures.py`.
 
 The code was simplified several times after the main run. Each time, sampled

@@ -3,7 +3,7 @@
     python analysis.py
 
 Reads results/main.csv.gz, results/size.csv.gz and results/tuning.csv.gz,
-saves the charts in results/ and the tables in results/summary.md.
+saves the charts in plots/ and the tables in results/summary.md.
 """
 import csv
 import gzip
@@ -79,7 +79,7 @@ def certain_win_share(trials, q):
 
 
 def save_chart(name):
-    plt.savefig(f"results/{name}", dpi=120, bbox_inches="tight")
+    plt.savefig(f"plots/{name}", dpi=120, bbox_inches="tight")
     plt.close()
 
 
@@ -472,7 +472,7 @@ def main():
     with open("results/summary.md", "w") as f:
         f.write("\n".join(report) + "\n")
     print("\n".join(report))
-    print("\nCharts saved in results/, tables in results/summary.md")
+    print("\nCharts saved in plots/, tables in results/summary.md")
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ def draw_ship_phases():
     fig.legend(handles=[Patch(color="#eb6834", label="dead end"),
                         Patch(color="#2a78d6", label="opened in phase 2")],
                loc="lower center", ncol=2, frameon=False)
-    plt.savefig("results/ship_phases.png", dpi=120, bbox_inches="tight")
+    plt.savefig("plots/ship_phases.png", dpi=120, bbox_inches="tight")
     plt.close()
 
 
@@ -92,7 +92,7 @@ def draw_danger_radius():
     plt.title("Which cells Bot 4 treats as predicted fire (threshold 0.6)")
     plt.legend()
     plt.grid(alpha=0.3)
-    plt.savefig("results/danger_radius.png", dpi=120, bbox_inches="tight")
+    plt.savefig("plots/danger_radius.png", dpi=120, bbox_inches="tight")
     plt.close()
 
 
@@ -138,7 +138,7 @@ def draw_trial(q, trial_number):
     axes[0][0].legend(loc="upper left", fontsize=8)
     fig.suptitle(f"Trial {trial_number}, D = {D}, q = {q:g}")
     fig.tight_layout()
-    fig.savefig(f"results/examples/q{q:g}_trial{trial_number}.png", dpi=120)
+    fig.savefig(f"plots/q{q:g}_trial{trial_number}.png", dpi=120)
     plt.close(fig)
 
 
@@ -201,7 +201,7 @@ def draw_decision(q, trial_number):
     plt.axis("off")
     plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=9)
     plt.title(f"Bot 4's decision at move {move}: trial {trial_number}, q = {q:g}, D = {D}")
-    plt.savefig(f"results/examples/decision_q{q:g}_trial{trial_number}.png", dpi=120, bbox_inches="tight")
+    plt.savefig(f"plots/decision_q{q:g}_trial{trial_number}.png", dpi=120, bbox_inches="tight")
     plt.close()
 
 
@@ -212,7 +212,7 @@ def main():
         draw_trial(q, trial_number)
     for q, trial_number in DECISION_PICTURES:
         draw_decision(q, trial_number)
-    print("Pictures saved in results/ and results/examples/")
+    print("Pictures saved in plots/")
 
 
 if __name__ == "__main__":
