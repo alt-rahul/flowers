@@ -38,11 +38,16 @@ def find_trial(D, q, seed, where, limit=5000):
 
 def draw(trial, specs, path, title):
     """One picture per bot: walls black, floor white, the tiles that burned
-    by the end of that bot's run orange, and the bot's path in blue."""
+    by the end of that bot's run orange, and the bot's path in blue. Up to two
+    bots side by side; more than two in two rows."""
     ship = trial.ship
     colors = ListedColormap(["black", "white", "orange"])   # 0 wall, 1 floor, 2 fire
-    fig, axes = plt.subplots(1, len(specs), figsize=(5 * len(specs), 5.5), squeeze=False)
-    for ax, spec in zip(axes[0], specs):
+    rows = 1 if len(specs) <= 2 else 2
+    cols = (len(specs) + rows - 1) // rows
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 5.5 * rows), squeeze=False)
+    for ax in axes.flat:
+        ax.axis("off")
+    for ax, spec in zip(axes.flat, specs):
         out = run_bot(trial, make_bot(spec), record_path=True)
         burned = fire_history(trial, out.steps)
         picture = []
@@ -64,7 +69,6 @@ def draw(trial, specs, path, title):
                 label="fire start")
         verdict = "success" if out.success else out.reason.replace("_", " ")
         ax.set_title(f"{bot_label(spec)}: {verdict} after {out.steps} steps")
-        ax.axis("off")
     axes[0][0].legend(loc="upper left", fontsize=8)
     fig.suptitle(title)
     fig.tight_layout()

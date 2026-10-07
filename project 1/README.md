@@ -48,6 +48,7 @@ Bots are named by spec strings, so variants can be compared in one run:
 | `visualize.py` | Draws what each bot did on one trial. |
 | `decision.py` | Draws one of Bot 4's real decisions: what it predicted, its plan, and the shortest path it turned down. |
 | `tests/` | Unit tests (see "Correctness checks"). |
+| `writeup/` | The writeup: `writeup.pdf`, built from `writeup.md` with `writeup/build.sh` (pandoc, then headless Chromium). |
 | `results/` | Data and charts from the runs described below. |
 
 ## Design

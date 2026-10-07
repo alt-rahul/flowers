@@ -3,3 +3,4 @@ __pycache__/
 # Raw experiment CSVs are committed gzipped (analyze.py reads .csv.gz).
 results/*.csv
 !results/**/summary.csv
+writeup/writeup.html
