@@ -4,7 +4,7 @@ the button runs through fire."""
 import math
 
 from search import a_star, bfs, distance_map
-from ship import grid_neighbors
+from ship import check_neighbors
 
 # Bot 4's settings
 THRESHOLD = 0.6   # a tile counts as "predicted fire" above this chance
@@ -29,7 +29,7 @@ def bot3_path(ship, pos, button):
     fire = ship.fire_cells()
     avoid = set(fire)
     for r, c in fire:
-        for n in grid_neighbors(ship.D, r, c):
+        for n in check_neighbors(ship.D, r, c):
             avoid.add(n)
     path = bfs(ship, pos, button, avoid)
     if path is None:
@@ -40,7 +40,7 @@ def bot3_path(ship, pos, button):
 # ---------------------------------------------------------------- Bot 4 ----
 #
 # Every tile is a race between the bot and the fire:
-#     k = how many moves the bot needs to get there
+#     k = how many moves the bot needs to get there3
 #     d = how many tiles the fire has to travel to get there
 # Along one route the fire's front moves forward one tile per step with
 # probability q, so in k steps it moves forward Binomial(k, q) tiles. If

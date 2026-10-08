@@ -5,7 +5,7 @@ import numpy as np
 from bots import bot2_path, bot3_path, bot4_path, danger_radius, predicted_fire
 from fire import spread_fire
 from search import bfs, distance_map
-from ship import generate_ship, grid_neighbors, ship_from_rows
+from ship import generate_ship, check_neighbors, ship_from_rows
 
 
 def corridor():
@@ -53,7 +53,7 @@ def test_bot3_avoids_the_tiles_next_to_the_fire_when_it_can():
         start, button, fire = cells[0], cells[1], cells[2]
         start_fire(ship, [fire])
         buffer = {fire}
-        for n in grid_neighbors(ship.D, fire[0], fire[1]):
+        for n in check_neighbors(ship.D, fire[0], fire[1]):
             buffer.add(n)
         path = bot3_path(ship, start, button)
         if bfs(ship, start, button, buffer) is not None:

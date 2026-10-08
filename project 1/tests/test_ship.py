@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 from search import distance_map
-from ship import Ship, generate_ship, grid_neighbors, ship_from_rows
+from ship import Ship, generate_ship, check_neighbors, ship_from_rows
 
 
 def count_open(ship):
@@ -68,7 +68,7 @@ def test_neighbors_are_the_open_tiles_next_to_each_tile():
         for c in range(ship.D):
             expected = []
             if ship.grid[r][c].is_open:
-                for nr, nc in grid_neighbors(ship.D, r, c):
+                for nr, nc in check_neighbors(ship.D, r, c):
                     if ship.grid[nr][nc].is_open:
                         expected.append((nr, nc))
             assert ship.grid[r][c].neighbors == expected
