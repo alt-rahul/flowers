@@ -40,8 +40,9 @@ each function (for example the q values and how many trials at each).
 
 Everything random uses `np.random`. `np.random.seed(i)` before building trial
 number `i` means the same trial number always gives the same ship and the same
-starting tiles. The fire uses `np.random.seed(1000000 + i)`, set again at the
-start of every bot's run, so every bot on a trial faces exactly the same fire.
+starting tiles. The fire uses `np.random.seed(FIRE_SEED + i)` (`FIRE_SEED` is
+67), set again at the start of every bot's run, so every bot on a trial faces
+exactly the same fire.
 
 ## The results
 
