@@ -1,4 +1,4 @@
-from search import a_star, bfs, distance_map
+from search import a_star, bfs, map_distance
 from ship import check_neighbors
 
 # Bot 4's settings
@@ -53,7 +53,7 @@ def bot3_path(ship, pos, button):
 def heat_map(ship, q):
     """heat[r][c] = q ** (d - 1) for every open tile that isn't burning, where
     d is the fire's distance to the tile. Walls and burning tiles get 0."""
-    fire_dist = distance_map(ship, ship.fire_cells(), set())   # d for every tile
+    fire_dist = map_distance(ship, ship.fire_cells(), set())   # d for every tile
     heat = []
     for r in range(ship.D):
         row = []

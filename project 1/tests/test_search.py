@@ -2,7 +2,7 @@ import heapq
 
 import numpy as np
 
-from search import a_star, bfs, distance_map, manhattan_distance
+from search import a_star, bfs, map_distance, manhattan_distance
 from ship import generate_ship
 
 
@@ -29,7 +29,7 @@ def test_bfs_finds_a_shortest_path():
         start, goal = two_random_tiles(ship)
         path = bfs(ship, start, goal, set())
         assert is_valid_path(ship, path, start, goal, set())
-        assert len(path) - 1 == distance_map(ship, [start], set())[goal[0]][goal[1]]
+        assert len(path) - 1 == map_distance(ship, [start], set())[goal[0]][goal[1]]
 
 
 def test_bfs_avoids_restricted_tiles():
@@ -59,7 +59,7 @@ def test_a_star_with_equal_costs_finds_a_shortest_path():
         cost = all_ones(ship.D)
         path = a_star(ship, start, goal, cost)
         assert is_valid_path(ship, path, start, goal, set())
-        assert len(path) - 1 == distance_map(ship, [start], set())[goal[0]][goal[1]]
+        assert len(path) - 1 == map_distance(ship, [start], set())[goal[0]][goal[1]]
 
 
 def cheapest_cost(ship, start, goal, cost):
@@ -107,6 +107,6 @@ def test_a_star_finds_the_cheapest_path():
 def test_manhattan_distance_never_overestimates():
     ship = generate_ship(20, 1)
     goal = ship.open_cells()[0]
-    dist = distance_map(ship, [goal], set())
+    dist = map_distance(ship, [goal], set())
     for r, c in ship.open_cells():
         assert manhattan_distance((r, c), goal) <= dist[r][c]

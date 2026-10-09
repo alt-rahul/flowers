@@ -4,7 +4,7 @@ import numpy as np
 
 from bots import PENALTY, bot1_path, bot2_path, bot3_path, bot4_path
 from fire import spread_fire
-from search import distance_map
+from search import map_distance
 from ship import generate_ship
 
 #this is the set up trial, meaning it will set up the "environment" for the us to run the bots
@@ -76,7 +76,7 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
             next_pos = plan[1]
 
         #this is the distance map 
-        to_button = distance_map(ship, [button], ship.fire_cells())
+        to_button = map_distance(ship, [button], ship.fire_cells())
         r, c = pos
         nr, nc = next_pos
         if to_button[nr][nc] != to_button[r][c] - 1:

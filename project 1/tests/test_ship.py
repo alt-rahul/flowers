@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from search import distance_map
+from search import map_distance
 from ship import Ship, generate_ship, check_neighbors
 from helpers import ship_from_rows
 
@@ -52,7 +52,7 @@ def test_phase_2_halves_the_dead_ends():
 def test_every_open_tile_can_be_reached():
     for seed in range(5):
         ship = generate_ship(30, seed)
-        dist = distance_map(ship, [ship.open_cells()[0]], set())
+        dist = map_distance(ship, [ship.open_cells()[0]], set())
         for r, c in ship.open_cells():
             assert dist[r][c] < math.inf
 

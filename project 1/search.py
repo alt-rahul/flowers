@@ -11,6 +11,10 @@ import math
 from collections import deque
 
 
+#this method builds the path from the original start location to all the way to goal coordinates
+#since the "prev" parameter will contain a dictionary of states, where the keys are the next states and the
+#items are the previous states, it iterates through it and builds the path, once it's done it's reversed to
+# return the path from start to finish
 def build_from_prev(prev, goal):
     """Rebuild the path by following prev back from the goal to the start."""
     path = []
@@ -44,7 +48,7 @@ def bfs(ship, start, goal, restricted):
     return None
 
 
-def distance_map(ship, starts, restricted):
+def map_distance(ship, starts, restricted):
     """dist[r][c] = the number of moves from the nearest tile in starts to
     (r, c), never entering a restricted tile (math.inf if it can't be reached).
 

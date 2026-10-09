@@ -12,7 +12,7 @@ Each file is one step, in the order things happen:
 |---|---|
 | `ship.py` | The ship: a 2D grid of `Tile` objects (open or blocked, on fire, bot, button). `generate_ship` builds one with the two phases from the assignment. |
 | `fire.py` | `spread_fire`: one fire update. Every tile is checked against the fire as it was at the start of the step, then the new fires start (synchronous). |
-| `search.py` | BFS and A* from the lecture pseudocode (`fringe`, `closed_set`, `prev`), plus `distance_map` (BFS distances to every tile). |
+| `search.py` | BFS and A* from the lecture pseudocode (`fringe`, `closed_set`, `prev`), plus `map_distance` (BFS distances to every tile). |
 | `bots.py` | One function per bot that returns the path it wants to take. Bot 4's heat map and its setting (`PENALTY`) are here too. |
 | `simulation.py` | `setup_trial` (one ship with three random tiles for the bot, the button and the first fire) and `run_bot` (one bot on one trial, one time step at a time). |
 | `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`, plus two tables: each bot's success rate at every q, and Bot 4's advantage over the other bots. |
