@@ -3,7 +3,8 @@ import math
 import numpy as np
 
 from fire import spread_fire
-from ship import generate_ship, ship_from_rows
+from ship import generate_ship
+from helpers import ship_from_rows
 
 
 def corridor(length):

@@ -3,7 +3,8 @@ import math
 import numpy as np
 
 from search import distance_map
-from ship import Ship, generate_ship, check_neighbors, ship_from_rows
+from ship import Ship, generate_ship, check_neighbors
+from helpers import ship_from_rows
 
 
 def count_open(ship):

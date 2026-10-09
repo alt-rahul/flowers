@@ -17,21 +17,20 @@ import math
 
 import pandas as pd
 
-from simulation import is_certain_win, run_bot, setup_trial
+from simulation import run_bot, setup_trial
 
 FIRE_SEED = 1000000   # added to the trial number to get the fire's seed
-COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms", "fireproof"]
+COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms"]
 
 
 def run_trial(D, q, trial):
     """Bots 1 to 4 on one trial. Returns one row for each bot."""
     ship, bot_start, button, fire_start = setup_trial(D, trial)
-    certain_win = is_certain_win(ship, bot_start, button, fire_start)
     rows = []
     for bot in [1, 2, 3, 4]:
         result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial)
         rows.append([D, q, trial, f"bot{bot}", int(result["success"]), result["reason"], result["steps"],
-                     result["deviations"], round(result["ms"], 3), int(certain_win)])
+                     result["deviations"], round(result["ms"], 3)])
     return rows
 
 
@@ -138,12 +137,11 @@ TUNING_BOTS = [
 def run_tuning_trial(q, trial):
     """Every bot in TUNING_BOTS on one trial. Returns one row for each."""
     ship, bot_start, button, fire_start = setup_trial(50, trial)
-    certain_win = is_certain_win(ship, bot_start, button, fire_start)
     rows = []
     for name, bot, penalty in TUNING_BOTS:
         result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial, penalty)
         rows.append([50, q, trial, name, int(result["success"]), result["reason"], result["steps"],
-                     result["deviations"], round(result["ms"], 3), int(certain_win)])
+                     result["deviations"], round(result["ms"], 3)])
     return rows
 
 
@@ -165,10 +163,9 @@ def tuning_run():
 def run_size_trial(D, q, trial):
     """Only Bot 4, on one trial on a ship of size D. Returns one row."""
     ship, bot_start, button, fire_start = setup_trial(D, trial)
-    certain_win = is_certain_win(ship, bot_start, button, fire_start)
     result = run_bot(ship, bot_start, button, fire_start, q, 4, FIRE_SEED + trial)
     return [D, q, trial, "bot4", int(result["success"]), result["reason"], result["steps"],
-            result["deviations"], round(result["ms"], 3), int(certain_win)]
+            result["deviations"], round(result["ms"], 3)]
 
 
 def size_run():

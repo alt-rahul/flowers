@@ -100,36 +100,3 @@ def a_star(ship, start, goal, cost):
                 priority = dist[child] + manhattan_distance(child, goal)
                 heapq.heappush(fringe, (priority, dist[child], child))
     return None
-
-
-def fireproof_path(ship, start, goal, fire_dist):
-    """A path the fire can't catch even if it spreads at every chance (q = 1),
-    or None. fire_dist is the fire's distance map.
-
-    BFS one move at a time: on move k the bot can enter tile c only if
-    fire_dist[c] > k, and the button only if fire_dist >= k (it is pressed
-    before the fire moves). Reaching a tile earlier is never worse, so each
-    tile only has to be looked at once."""
-    if start == goal:
-        return [start]
-    prev = {start: None}
-    fringe = [start]   # the tiles reached in k - 1 moves
-    k = 0
-    while len(fringe) > 0:
-        k += 1
-        next_fringe = []   # the tiles reached in k moves
-        for current_state in fringe:
-            for child in ship.neighbors(current_state):
-                if child in prev:
-                    continue
-                cr, cc = child
-                if child == goal:
-                    if fire_dist[cr][cc] >= k:
-                        prev[child] = current_state
-                        return build_from_prev(prev, goal)
-                    continue
-                prev[child] = current_state
-                if fire_dist[cr][cc] > k:
-                    next_fringe.append(child)
-        fringe = next_fringe
-    return None

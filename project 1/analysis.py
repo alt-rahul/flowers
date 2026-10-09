@@ -60,12 +60,6 @@ def paired_difference(results, q, bot_a, bot_b):
     return mean_and_error(diffs)
 
 
-def certain_win_share(results, q):
-    """The share of trials at q that were a certain win from the start."""
-    certain = column(results, q, "bot1", "fireproof")
-    return sum(certain) / len(certain)
-
-
 def save_chart(name):
     plt.savefig("plots/" + name, dpi=120, bbox_inches="tight")
     plt.close()
@@ -81,12 +75,6 @@ def plot_success_rate(results, qs):
             rate, error = success_rate(results, q, bot)
             rates.append(100 * rate)
         plt.plot(qs, rates, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
-
-    certain = []
-    for q in qs:
-        certain.append(100 * certain_win_share(results, q))
-    plt.plot(qs, certain, "k--", label="Certain win from the start")
-
     plt.xlabel("Flammability q")
     plt.ylabel("Success rate (%)")
     plt.title("Success rate vs flammability q")
@@ -179,27 +167,6 @@ def head_to_head(results, q, other):
     return bot4_won, other_won
 
 
-def plot_head_to_head(results, qs):
-    """Out of every 1,000 trials at each q: how many Bot 4 won while Bot 3
-    lost, and how many Bot 3 won while Bot 4 lost."""
-    bot4_won = []
-    bot3_won = []
-    for q in qs:
-        a, b = head_to_head(results, q, "bot3")
-        n = len(column(results, q, "bot4", "success"))
-        bot4_won.append(1000 * a / n)
-        bot3_won.append(1000 * b / n)
-    plt.figure(figsize=(8, 5))
-    plt.plot(qs, bot4_won, marker="o", markersize=3, color=COLORS["bot4"], label="Bot 4 won, Bot 3 lost")
-    plt.plot(qs, bot3_won, marker="o", markersize=3, color=COLORS["bot3"], label="Bot 3 won, Bot 4 lost")
-    plt.xlabel("Flammability q")
-    plt.ylabel("Trials per 1,000")
-    plt.title("Bot 4 against Bot 3, on the same trials")
-    plt.legend()
-    plt.grid()
-    save_chart("head_to_head.png")
-
-
 def plot_ship_size(results, size):
     """Bot 4's success rate at each q, on ships of size 25, 50 and 100.
     D = 50 comes from the main run, the others from the ship size run."""
@@ -267,15 +234,14 @@ def plot_tuning(tuning):
 # ------------------------------------------------------------- tables ----
 
 def table_success_rates(results, qs):
-    report.append("## Success rate (95% CI) and certain wins\n")
-    report.append("| q | Bot 1 | Bot 2 | Bot 3 | Bot 4 | Certain wins |")
-    report.append("|---|---|---|---|---|---|")
+    report.append("## Success rate (95% CI)\n")
+    report.append("| q | Bot 1 | Bot 2 | Bot 3 | Bot 4 |")
+    report.append("|---|---|---|---|---|")
     for q in qs:
         line = f"| {q:g} |"
         for bot in BOTS:
             rate, error = success_rate(results, q, bot)
             line += f" {100 * rate:.1f}% ± {100 * error:.1f} |"
-        line += f" {100 * certain_win_share(results, q):.1f}% |"
         report.append(line)
 
 
@@ -289,16 +255,6 @@ def table_differences(results, qs):
             diff, error = paired_difference(results, q, "bot4", bot)
             line += f" {100 * diff:+.1f} ± {100 * error:.1f} |"
         report.append(line)
-
-
-def table_certain_wins(results):
-    report.append("\n## Certain wins: how many of them each bot won\n")
-    report.append("| Bot | Certain-win trials won |")
-    report.append("|---|---|")
-    for bot in BOTS:
-        rows = results[(results["bot"] == bot) & (results["fireproof"] == 1)]
-        won = rows["success"].sum()
-        report.append(f"| {NAMES[bot]} | {won} of {len(rows)} |")
 
 
 def table_failures(results, qs):
@@ -396,7 +352,6 @@ def main():
     plot_bot4_advantage(results, qs)
     plot_divergence(results, qs)
     plot_failure_reasons(results)
-    plot_head_to_head(results, qs)
     plot_tuning(tuning)
     plot_ship_size(results, size)
 
@@ -404,7 +359,6 @@ def main():
     report.append(f"Main run: D = 50, {len(results) // 4} trials (results/main.csv).\n")
     table_success_rates(results, qs)
     table_differences(results, qs)
-    table_certain_wins(results)
     table_failures(results, qs)
     table_head_to_head(results, qs)
     table_divergence(results, qs)

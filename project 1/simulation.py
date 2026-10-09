@@ -4,7 +4,7 @@ import numpy as np
 
 from bots import PENALTY, bot1_path, bot2_path, bot3_path, bot4_path
 from fire import spread_fire
-from search import distance_map, fireproof_path
+from search import distance_map
 from ship import generate_ship
 
 #this is the set up trial, meaning it will set up the "environment" for the us to run the bots
@@ -111,10 +111,3 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
         "deviations": deviations,
         "ms": think_time * 1000,
     }
-
-
-def is_certain_win(ship, bot_start, button, fire_start):
-    """True if the bot has a path that even the fastest possible fire (q = 1)
-    can't catch, so it is going to win whatever happens. Two BFSs, no simulation."""
-    fire_dist = distance_map(ship, [fire_start], set())
-    return fireproof_path(ship, bot_start, button, fire_dist) is not None

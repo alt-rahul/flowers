@@ -12,12 +12,12 @@ Each file is one step, in the order things happen:
 |---|---|
 | `ship.py` | The ship: a 2D grid of `Tile` objects (open or blocked, on fire, bot, button). `generate_ship` builds one with the two phases from the assignment. |
 | `fire.py` | `spread_fire`: one fire update. Every tile is checked against the fire as it was at the start of the step, then the new fires start (synchronous). |
-| `search.py` | BFS and A* from the lecture pseudocode (`fringe`, `closed_set`, `prev`), plus `distance_map` (BFS distances to every tile) and `fireproof_path` (the certain-win check). |
+| `search.py` | BFS and A* from the lecture pseudocode (`fringe`, `closed_set`, `prev`), plus `distance_map` (BFS distances to every tile). |
 | `bots.py` | One function per bot that returns the path it wants to take. Bot 4's heat map and its setting (`PENALTY`) are here too. |
-| `simulation.py` | `Trial` (one ship with its start tiles and fire), `run_bot` (one bot on one trial, one time step at a time), and `is_certain_win`. |
+| `simulation.py` | `setup_trial` (one ship with three random tiles for the bot, the button and the first fire) and `run_bot` (one bot on one trial, one time step at a time). |
 | `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`, plus two tables: each bot's success rate at every q, and Bot 4's advantage over the other bots. |
 | `analysis.py` | Reads the saved results and makes the tables (`results/summary.md`) and the charts in `plots/`. |
-| `tests/` | Checks for each step (`python -m pytest`). |
+| `tests/` | Checks for each step (`python -m pytest`). `tests/helpers.py` draws small ships by hand for them. |
 | `writeup.md` | The writeup, with its figures in `plots/`. |
 
 ## Running it
@@ -32,7 +32,7 @@ python experiments.py     # all the experiments (a few hours)
 python analysis.py        # tables (results/summary.md) and charts (plots/)
 ```
 
-`experiments.py` runs one trial after another and writes the two results
+`experiments.py` runs one trial after another and writes the results
 files, so you only need it to make the data again. The settings are written in
 each function (for example the q values and how many trials at each).
 
@@ -56,7 +56,6 @@ Every row of a results file is one bot on one trial:
 | `steps` | how many moves the bot made |
 | `deviations` | moves Bot 2's rule couldn't have made (0 = it acted like Bot 2) |
 | `ms` | time spent deciding, in milliseconds (the only column that changes if you run it again) |
-| `fireproof` | 1 if the trial was a certain win from the start |
 
 - `results/main.csv`: the main run at D = 50: every q from 0 to 1 in steps of
   0.05, with 1,000 trials at each q from 0.1 to 0.7 and 200 elsewhere.
@@ -77,13 +76,12 @@ Every row of a results file is one bot on one trial:
 
 | Chart | What it shows |
 |---|---|
-| `success_rate.png` | Each bot's success rate at every q, and the share of trials that are a certain win from the start (Figure 1 in the writeup). |
+| `success_rate.png` | Each bot's success rate at every q (Figure 1 in the writeup). |
 | `bot4_advantage.png` | Bot 4's success rate minus each other bot's, on the same trials (Figure 2). |
 | `ship_size.png` | Bot 4's success rate on ships of size 25, 50 and 100 (Figure 3). |
 | `divergence.png` | How often Bots 3 and 4 make a move Bot 2's rule couldn't have made (Figure 4). |
 | `failure_reasons.png` | Why each bot fails (Figure 5). |
 | `tuning.png` | Each Bot 4 penalty (and Bots 2 and 3) minus the chosen penalty of 10, with 95% confidence intervals (Figure 6). |
-| `head_to_head.png` | At each q, out of every 1,000 trials: how often Bot 4 won where Bot 3 lost, and the other way round (not in the writeup). |
 
 ## What the results show
 
@@ -93,9 +91,9 @@ Every row of a results file is one bot on one trial:
 - For q from 0.8 to 1 it is about 2 points behind Bot 2. When the fire is
   that fast, the heat spreads far, so Bot 4 takes detours that give the fire
   time to cut it off.
-- About half the trials are a certain win from the start (a fireproof path
-  exists). Bots 1, 2 and 3 won all 7,348 of them, and Bot 4 lost 9, all at
-  q = 0.8 or more.
+- From q = 0.75 up, thinking stops mattering: Bot 1, which never replans,
+  wins exactly the same trials as Bot 2, and at q = 1 all four bots win the
+  same 53% of trials.
 - In tuning, penalties 5, 10 and 20 did about the same and 30 did worse, so
   `PENALTY` is 10.
 - Bot 4 does about the same on 25 by 25, 50 by 50 and 100 by 100 ships: a
@@ -113,5 +111,5 @@ Every row of a results file is one bot on one trial:
 - BFS has one line more than the lecture pseudocode: a child that is already
   in `prev` is already on the fringe, so it isn't added again.
 - From the instructor's guidance: every bot faces the same fire on a trial,
-  the certain-win check, and counting the moves Bot 2's rule couldn't make.
+  and counting the moves Bot 2's rule couldn't make.
 - The folder is called `project 1` (with a space), so quote it in the shell.

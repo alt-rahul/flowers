@@ -1,9 +1,6 @@
 from bots import bot1_path
-from fire import spread_fire
-from search import bfs, distance_map, fireproof_path
-from simulation import is_certain_win, run_bot, setup_trial
-
-import numpy as np
+from search import bfs
+from simulation import run_bot, setup_trial
 
 
 def test_bot1_follows_its_first_plan():
@@ -61,27 +58,3 @@ def test_the_same_fire_seed_gives_the_same_run():
     again = run_bot(ship, bot_start, button, fire_start, 0.4, 2, 9)
     assert first["reason"] == again["reason"]
     assert first["path"] == again["path"]
-
-
-def test_following_the_fireproof_path_always_wins():
-    # On a certain-win trial, walking the fireproof path wins against the real
-    # fire, whatever q is.
-    for q in [0.1, 0.4, 0.7, 1.0]:
-        certain = 0
-        for trial in range(40):
-            ship, bot_start, button, fire_start = setup_trial(20, trial)
-            if not is_certain_win(ship, bot_start, button, fire_start):
-                continue
-            certain += 1
-            ship.clear()
-            ship.tile(fire_start).on_fire = True
-            np.random.seed(trial)
-            fire_dist = distance_map(ship, [fire_start], set())
-            path = fireproof_path(ship, bot_start, button, fire_dist)
-            for pos in path[1:]:
-                assert not ship.tile(pos).on_fire
-                if pos == button:
-                    break
-                spread_fire(ship, q)
-                assert not ship.tile(pos).on_fire
-        assert certain > 0

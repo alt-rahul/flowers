@@ -3,7 +3,8 @@ import numpy as np
 from bots import bot2_path, bot3_path, bot4_path, heat_map
 from fire import spread_fire
 from search import bfs
-from ship import generate_ship, check_neighbors, ship_from_rows
+from ship import generate_ship, check_neighbors
+from helpers import ship_from_rows
 
 
 def corridor():
