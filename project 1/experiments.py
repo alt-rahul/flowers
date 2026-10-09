@@ -6,7 +6,7 @@ Trial number i uses seed i for the ship and the starting tiles, and seed
 FIRE_SEED + i for the fire. So any trial can be made again exactly, and every
 bot on a trial faces the same fire.
 
-It runs one trial after another and takes about an hour on a laptop.
+It runs one trial after another and takes a few hours on a laptop.
 
 After the main run it also prints and saves two tables:
     results/success_by_q.csv     each bot's success rate (%) at every q
@@ -162,9 +162,33 @@ def tuning_run():
     results.to_csv("results/tuning.csv", index=False)
 
 
+def run_size_trial(D, q, trial):
+    """Only Bot 4, on one trial on a ship of size D. Returns one row."""
+    ship, bot_start, button, fire_start = setup_trial(D, trial)
+    certain_win = is_certain_win(ship, bot_start, button, fire_start)
+    result = run_bot(ship, bot_start, button, fire_start, q, 4, FIRE_SEED + trial)
+    return [D, q, trial, "bot4", int(result["success"]), result["reason"], result["steps"],
+            result["deviations"], round(result["ms"], 3), int(certain_win)]
+
+
+def size_run():
+    """Bot 4 on smaller and bigger ships (D = 25 and D = 100), 200 trials at
+    each q from 0.1 to 0.8, to check that D = 50 isn't special."""
+    rows = []
+    for D in [25, 100]:
+        for q in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+            print(f"Ship size run: D = {D}, q = {q}, 200 trials")
+            for trial in range(200):
+                rows.append(run_size_trial(D, q, trial))
+
+    results = pd.DataFrame(rows, columns=COLUMNS)
+    results.to_csv("results/size.csv", index=False)
+
+
 def main():
     main_run()
     tuning_run()
+    size_run()
     print("Finished succssfuly!")
 
 

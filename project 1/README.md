@@ -17,7 +17,6 @@ Each file is one step, in the order things happen:
 | `simulation.py` | `Trial` (one ship with its start tiles and fire), `run_bot` (one bot on one trial, one time step at a time), and `is_certain_win`. |
 | `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`, plus two tables: each bot's success rate at every q, and Bot 4's advantage over the other bots. |
 | `analysis.py` | Reads the saved results and makes the tables (`results/summary.md`) and the charts in `plots/`. |
-| `pictures.py` | Draws the ship generation, Bot 4's heat maps, single trials and single Bot 4 decisions, into `plots/`. |
 | `tests/` | Checks for each step (`python -m pytest`). |
 | `writeup.md` | The writeup, with its figures in `plots/`. |
 
@@ -29,9 +28,8 @@ tests). Run everything from this folder:
 ```bash
 cd "project 1"
 python -m pytest          # the tests
-python experiments.py     # all the experiments (about an hour)
+python experiments.py     # all the experiments (a few hours)
 python analysis.py        # tables (results/summary.md) and charts (plots/)
-python pictures.py        # the other pictures in plots/
 ```
 
 `experiments.py` runs one trial after another and writes the two results
@@ -68,8 +66,10 @@ Every row of a results file is one bot on one trial:
 - `results/tuning.csv`: Bot 2, Bot 3 and different Bot 4 penalties on 800
   separate trials (q = 0.2, 0.4, 0.6 and 0.8, trial numbers 5000 to 5199,
   which the main run never uses).
-- `results/summary.md` and the pictures in `plots/` are made from those by
-  `analysis.py` and `pictures.py`.
+- `results/size.csv`: Bot 4 alone on smaller and bigger ships (D = 25 and
+  D = 100), 200 trials at each q from 0.1 to 0.8.
+- `results/summary.md` and the charts in `plots/` are made from those by
+  `analysis.py`.
 
 ## Differences from the original plan
 

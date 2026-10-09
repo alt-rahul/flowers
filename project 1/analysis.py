@@ -2,8 +2,8 @@
 
     python analysis.py
 
-Reads results/main.csv and results/tuning.csv, saves the charts in plots/
-and the tables in results/summary.md.
+Reads results/main.csv, results/tuning.csv and results/size.csv, saves the
+charts in plots/ and the tables in results/summary.md.
 """
 import math
 
@@ -200,6 +200,29 @@ def plot_head_to_head(results, qs):
     save_chart("head_to_head.png")
 
 
+def plot_ship_size(results, size):
+    """Bot 4's success rate at each q, on ships of size 25, 50 and 100.
+    D = 50 comes from the main run, the others from the ship size run."""
+    qs = sorted(size["q"].unique())
+    plt.figure(figsize=(8, 5))
+    for D in [25, 50, 100]:
+        if D == 50:
+            rows = results
+        else:
+            rows = size[size["D"] == D]
+        rates = []
+        for q in qs:
+            successes = column(rows, q, "bot4", "success")
+            rates.append(100 * sum(successes) / len(successes))
+        plt.plot(qs, rates, marker="o", label=f"D = {D}")
+    plt.xlabel("Flammability q")
+    plt.ylabel("Bot 4's success rate (%)")
+    plt.title("Bot 4 on three ship sizes")
+    plt.legend()
+    plt.grid()
+    save_chart("ship_size.png")
+
+
 # The bots tried in tuning, as they are named in results/tuning.csv.
 TUNING_CHOSEN = "bot4 penalty=10"
 TUNING_LABELS = [
@@ -364,6 +387,7 @@ def table_tuning(tuning):
 def main():
     results = pd.read_csv("results/main.csv")
     tuning = pd.read_csv("results/tuning.csv")
+    size = pd.read_csv("results/size.csv")
     qs = sorted(results["q"].unique())
 
     plot_success_rate(results, qs)
@@ -372,6 +396,7 @@ def main():
     plot_failure_reasons(results)
     plot_head_to_head(results, qs)
     plot_tuning(tuning)
+    plot_ship_size(results, size)
 
     report.append("# Results\n")
     report.append(f"Main run: D = 50, {len(results) // 4} trials (results/main.csv).\n")
