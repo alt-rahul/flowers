@@ -73,8 +73,8 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
         else:
             next_pos = plan[1]
 
-        #this is the distance map - also this is helpful because if the next position is not it's neighbor
-        #then it's a deviation from bot2 since bot2 always uses the shortest path - not the smartest/most cautious shortest path
+        #this is the distance map - also this is helpful because if the next position is not the next cell to the button along the 
+        # a fire free shortest path then it's a deviation from bot2 since bot2 always uses the shortest path - not the smartest/most cautious shortest path
         to_button = map_distance(ship, [button], ship.fire_cells())
         r, c = pos
         nr, nc = next_pos

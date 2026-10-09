@@ -33,7 +33,7 @@ def bot3_path(ship, pos, button):
 # bo4 is very intersting because it basically makes a "heat map" of the ship, where the closer a tile is to an existing fire, 
 # the "hotter" it is. Then the bot runs A* to the button, where hot tiles cost more to step
 # on or use in our path. so the bot tries to goes around the hotter cells when the way around isn't too long,
-# but ultimately decides to go through it when every other way is much longer (hence the manhattan distance)
+# but ultimately decides to go through it when every other way is much longer 
 # the heat of each tile is based on the formula q ** (d - 1), where d is how many tiles the fire has to
 # travel to get there. a tile right next to the fire (d = 1) has heat 1, and every tile further away evnetually decays in cost
 # so steping ton a tile costs the BURNING_COST if you were to step on a fire cell (it's ridicously high because we never want to cell on a
@@ -71,8 +71,8 @@ def bot4_path(ship, pos, button, q, penalty=PENALTY):
     path = a_star(ship, pos, button, cost)
     if path is None:
         return None
-    #this exists because despite burning cost being so high, there might still be a path
-    # with a fire cell that is cheap enough to traverse so if any cell in the path is on fire, this declares a no-go
+    #this exists because if every path does has to go through the fire then A* still returns that path
+    # which is not allowed so if there the path inlcudes a fire cell - it should be marked as not possible
     for r, c in path: 
         if ship.grid[r][c].on_fire:
             return None
