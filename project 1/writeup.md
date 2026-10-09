@@ -63,6 +63,10 @@ when every other way is much longer. Every step, Bot 4 does five things:
 5. It moves to the first cell of that path. The fire then spreads, and next
    step it does all of this again.
 
+![Figure 1](plots/heat_cost.png)
+
+*Figure 1: The cost Bot 4 gives a cell, based on how far the fire has to travel to reach it, for a slow, a medium and a fast fire. A cell right next to the fire always costs 11. For a slow fire ($q = 0.2$) the cost drops back to about a normal move within 3 or 4 cells, while for a fast fire ($q = 0.8$) a cell 10 cells away still costs more than twice a normal move, so Bot 4 stays much further away from a fast fire.*
+
 The heat map and the Manhattan distance do different jobs. The heat map sets
 the costs, which decide which path is the cheapest, so it is what makes Bot 4
 different from Bot 2. The Manhattan distance never changes the path A\* finds,
@@ -100,15 +104,19 @@ ship is built, so the searches never have to check for walls. Every step, Bot 4
 needs only one BFS, one pass over the ship and one A\*. All four bots reuse the
 same ship on a trial, and a run stops as soon as the bot wins or loses. Bot 4
 takes about 1.9 ms per move to decide, against 0.5 ms for Bot 2 and 0.6 ms for
-Bot 3, and a trial with all four bots takes about half a second on a 50 by 50
-ship.
+Bot 3 (Figure 2), and a trial with all four bots takes about half a second on a
+50 by 50 ship.
+
+![Figure 2](plots/think_time.png)
+
+*Figure 2: How long each bot takes on average to decide one move. Bot 1 only plans once at the start, so it barely thinks at all. Bot 4 takes about 3 to 4 times longer than Bots 2 and 3, because every step it runs a BFS from the fire, builds the heat map and then runs A\*, instead of a single BFS.*
 
 ## 2. Experiments and results (Question 2)
 
 I used $D = 50$ for the main run, because a trial on a 100 by 100 ship takes
 about 10 times longer (5 seconds against half a second), so the same experiment
 would take about 20 hours instead of 2. I checked $D = 25$ and 100 separately
-(Figure 3). I tried every $q$ from 0 to 1 in steps of 0.05. The bots only
+(Figure 6). I tried every $q$ from 0 to 1 in steps of 0.05. The bots only
 really differ between $q = 0.1$ and 0.7, so I ran 1,000 trials at each of those
 values and 200 at the others: 14,600 trials, with all four bots on every one.
 Trial $i$ always uses seed $i$ for the ship and the starting cells. One success
@@ -117,9 +125,9 @@ bots face the same fire I can compare them trial by trial, which is much more
 exact: at $q = 0.4$ the gap between Bot 4 and Bot 2 is known to $\pm 0.8$
 points instead of $\pm 3.5$.
 
-![Figure 1](plots/success_rate.png)
+![Figure 3](plots/success_rate.png)
 
-*Figure 1: Success rate against flammability $q$ for every bot. Below $q = 0.1$ and from 0.75 up there are only 200 trials (trials 0 to 199). Those trials happen to be a little easier than average (at $q = 0.7$ the bots won 65 to 67% of them, against 61 to 62% of all 1,000), which is why the curves step up a little at 0.75.*
+*Figure 3: Success rate against flammability $q$ for every bot. Below $q = 0.1$ and from 0.75 up there are only 200 trials (trials 0 to 199). Those trials happen to be a little easier than average (at $q = 0.7$ the bots won 65 to 67% of them, against 61 to 62% of all 1,000), which is why the curves step up a little at 0.75.*
 
 *Table 1: Success rates at some values of $q$.*
 
@@ -140,13 +148,27 @@ For very small $q$ all the bots are about equally good (at $q = 0$ they all win
 every trial), and for large $q$ they are equally bad. From $q = 0.75$ up, Bot 1,
 which never replans, wins exactly the same trials as Bot 2, and at $q = 1$ all
 four bots win exactly the same 106 of 200 trials (53%). The fire then moves as
-fast as the bot, so the only thing that matters is whether the bot started far
-enough ahead of it. Figure 2 and Table 2 show the gap between Bot 4 and the
-others on the same trials.
+fast as the bot, so the only thing that matters is whether the bot started
+closer to the button than the fire. Figure 4 shows this directly. At $q = 1$,
+Bot 2 won 95 to 100% of the trials where it started at least as close to the
+button as the fire, and none of the trials where it started behind. A slow fire
+is much more forgiving: at $q = 0.2$, Bot 2 still won 71% of the trials where
+the fire started 31 to 40 moves closer to the button than the bot did.
 
-![Figure 2](plots/bot4_advantage.png)
+![Figure 4](plots/head_start.png)
 
-*Figure 2: Bot 4's success rate minus each other bot's on the same trials, in percentage points. Above zero means Bot 4 won more often.*
+*Figure 4: Bot 2's success rate based on its head start, which is how many more moves the fire needs to reach the button than the bot (a positive head start means the bot started closer). The head starts are put into groups of 10 moves. The faster the fire, the more the result comes down to who started closer, and at $q = 1$ the line is almost a step from 0% to 100% at a head start of 0.*
+
+Since every bot faces the same fire, the simplest way to compare Bot 4 with Bot
+2 is to count the trials that only one of them won (Figure 5). For $q$ up to
+0.2, Bot 2 never won a trial that Bot 4 lost, and at every $q$ from 0.25 to 0.6,
+Bot 4 won at least twice as many of these trials as Bot 2 did. Table 2 turns
+this into the difference in success rate on the same trials, with 95% confidence
+intervals.
+
+![Figure 5](plots/bot4_vs_bot2.png)
+
+*Figure 5: At each $q$, the share of trials that Bot 4 won and Bot 2 lost, and the share that Bot 2 won and Bot 4 lost (on the same ship with the same fire). The Bot 4 line is above the Bot 2 line at every $q$ from 0.1 to 0.7 except 0.65, so that is where Bot 4 does better. From 0.75 up it is the other way around, and the reason is explained in Section 3.*
 
 *Table 2: Bot 4's success rate minus each other bot's on the same trials, in points, with 95% confidence intervals.*
 
@@ -164,17 +186,17 @@ it beats both with 95% confidence at $q$ = 0.2, 0.25, 0.3, 0.35, 0.45, 0.5 and
 Bot 1 for $q$ from 0.1 to 0.3. When the fire is very fast it does worse: for $q$
 from 0.8 to 1 it is $2.1 \pm 0.9$ points behind Bot 2 (Section 3 explains why).
 
-The gaps look small in Figure 1 because in almost every trial the bots end the
+The gaps look small in Figure 3 because in almost every trial the bots end the
 same way: for $q$ from 0.1 to 0.7, all four bots win or all four lose in 95 to
 99% of trials. The whole difference between them comes from the few trials where
 they don't, which is why comparing them on the same trials matters so much.
 
-![Figure 3](plots/ship_size.png)
+![Figure 6](plots/ship_size.png)
 
-*Figure 3: Bot 4's success rate on ships of size 25, 50 and 100. $D = 50$ is the main run, and $D = 25$ and 100 have 200 trials at each $q$. The three lines are almost on top of each other, so the size of the ship hardly matters.*
+*Figure 6: Bot 4's success rate on ships of size 25, 50 and 100. $D = 50$ is the main run, and $D = 25$ and 100 have 200 trials at each $q$. The three lines are almost on top of each other, so the size of the ship hardly matters.*
 
 To see whether the size of the ship matters, I also ran Bot 4 on 25 by 25 and
-100 by 100 ships (Figure 3). A bigger ship makes the bot's path to the button
+100 by 100 ships (Figure 6). A bigger ship makes the bot's path to the button
 longer, but it makes the fire's path longer too, so the race between them stays
 about the same. The 100 by 100 ships do a few points worse at $q = 0.7$ and 0.8,
 but with 200 trials each rate is only known to about $\pm 7$ points there, so I
@@ -184,9 +206,9 @@ To check whether Bot 4 really decides differently from Bot 2, I count every move
 Bot 2's rule couldn't have made, meaning a move that isn't along some shortest
 fire-free path to the button (Bot 2's own count is always zero).
 
-![Figure 4](plots/divergence.png)
+![Figure 7](plots/divergence.png)
 
-*Figure 4: Share of trials where Bot 3 or Bot 4 makes at least one move Bot 2 couldn't have made. Bot 4 does this more as $q$ grows, because its heat reaches further from the fire. The one exception is $q = 1$: there every cell has heat $1^{d-1} = 1$, so every step costs the same and Bot 4 just takes a shortest path, like Bot 2.*
+*Figure 7: Share of trials where Bot 3 or Bot 4 makes at least one move Bot 2 couldn't have made. Bot 4 does this more as $q$ grows, because its heat reaches further from the fire. The one exception is $q = 1$: there every cell has heat $1^{d-1} = 1$, so every step costs the same and Bot 4 just takes a shortest path, like Bot 2.*
 
 Bot 4 mostly agrees with Bot 2: in 88% of trials every move it makes is one Bot 2
 could have made, because when the fire is far away the heat on the shortest path
@@ -197,9 +219,9 @@ about as often (1,639 trials), but its detours help about as often as they hurt
 
 ## 3. Why the bots fail, what I learned, and the ideal bot (Questions 3 and 4)
 
-![Figure 5](plots/failure_reasons.png)
+![Figure 8](plots/failure_reasons.png)
 
-*Figure 5: How each bot's failures break down, over every $q$.*
+*Figure 8: How each bot's failures break down, over every $q$. Bot 1 is the only bot that walks into the fire, and Bots 3 and 4 get caught by the fire spreading onto them much less often than Bot 2, because they keep their distance from it.*
 
 Bot 1 mostly dies by walking into the fire (41% of its failures), because it
 never looks again after planning. Bot 2 walks along the edge of the fire, so 13%
@@ -226,9 +248,9 @@ made 9 detour moves and was cut off after 38. A simple fix would be a smaller
 penalty when $q$ is high, or no penalty at all from about $q = 0.75$ up, which
 makes Bot 4 just take a shortest path there, like Bot 2.
 
-![Figure 6](plots/tuning.png)
+![Figure 9](plots/tuning.png)
 
-*Figure 6: Tuning on 800 separate trials ($q$ = 0.2, 0.4, 0.6 and 0.8, 200 each): each setting's success rate minus Bot 4 with penalty 10, in points, with 95% confidence intervals. Every bar except penalty 30 is within the noise of zero.*
+*Figure 9: The success rate of every setting on the 800 tuning trials ($q$ = 0.2, 0.4, 0.6 and 0.8, 200 trials each), which the main run never uses. All of the settings are within 2 points of each other, so the penalty only matters a little, as long as it isn't too big.*
 
 Bot 4 went through a few versions before this one. My first idea was to treat
 any cell with over a 60% chance of catching fire as burning, but only cells
@@ -236,7 +258,7 @@ touching the fire can catch fire next step, so that was just Bot 3 again. Then I
 tried working out, for every cell, the chance that the fire gets there before
 the bot. It did about as well as the heat map, but it was much harder to
 explain, so I kept the heat map. I tuned the penalty on 800 trials the main run
-never uses (Figure 6). Penalties 5, 10 and 20 were within the noise of each
+never uses (Figure 9). Penalties 5, 10 and 20 were within the noise of each
 other and 30 did worse, so I kept 10. Bot 2 even came out half a point ahead on
 these trials, but all of that comes from $q = 0.8$, where it was 3 points ahead,
 and penalty 5 also did a little better there, which fits the detour problem
@@ -260,12 +282,12 @@ next to the fire is safe if the bot crosses it now and deadly ten steps later.
 Then it would take the path with the best chance of reaching the button, which
 would also fix the high-$q$ problem, because a long detour would pay for being
 slow. But thinking takes time (Bot 4 already spends about 1.9 ms per move,
-against 0.5 ms for Bot 2), and in real life the fire keeps spreading while the
-bot thinks. So I would only think hard when it matters: keep the plan while the
-fire is far from it, plan again only when the fire gets close, and run fewer
-fire simulations when the fire is far away. My results show when thinking is
-worth it: in the middle range of $q$, where Bot 4 beat the simpler bots. It is
-smart to just make a break for it when the fire is very fast (from $q = 0.75$
-up, Bot 1, which never plans again, did exactly as well as Bot 2) or when the
-shortest path is already far from the fire, because the fire only grows, so
-waiting or taking a detour only gives it more time.
+against 0.5 ms for Bot 2, as Figure 2 shows), and in real life the fire keeps
+spreading while the bot thinks. So I would only think hard when it matters: keep
+the plan while the fire is far from it, plan again only when the fire gets
+close, and run fewer fire simulations when the fire is far away. My results show
+when thinking is worth it: in the middle range of $q$, where Bot 4 beat the
+simpler bots. It is smart to just make a break for it when the fire is very fast
+(from $q = 0.75$ up, Bot 1, which never plans again, did exactly as well as Bot
+2) or when the shortest path is already far from the fire, because the fire only
+grows, so waiting or taking a detour only gives it more time.

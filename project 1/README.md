@@ -29,7 +29,7 @@ tests). Run everything from this folder:
 cd "project 1"
 python -m pytest          # the tests
 python experiments.py     # all the experiments (a few hours)
-python analysis.py        # tables (results/summary.md) and charts (plots/)
+python analysis.py        # tables (results/summary.md) and charts (plots/), a few minutes
 ```
 
 `experiments.py` runs one trial after another and writes the results
@@ -76,12 +76,15 @@ Every row of a results file is one bot on one trial:
 
 | Chart | What it shows |
 |---|---|
-| `success_rate.png` | Each bot's success rate at every q (Figure 1 in the writeup). |
-| `bot4_advantage.png` | Bot 4's success rate minus each other bot's, on the same trials (Figure 2). |
-| `ship_size.png` | Bot 4's success rate on ships of size 25, 50 and 100 (Figure 3). |
-| `divergence.png` | How often Bots 3 and 4 make a move Bot 2's rule couldn't have made (Figure 4). |
-| `failure_reasons.png` | Why each bot fails (Figure 5). |
-| `tuning.png` | Each Bot 4 penalty (and Bots 2 and 3) minus the chosen penalty of 10, with 95% confidence intervals (Figure 6). |
+| `heat_cost.png` | What a cell costs Bot 4 based on how far the fire has to travel to reach it, for q = 0.2, 0.5 and 0.8 (Figure 1 in the writeup). |
+| `think_time.png` | How long each bot takes to decide one move (Figure 2). |
+| `success_rate.png` | Each bot's success rate at every q (Figure 3). |
+| `head_start.png` | Bot 2's success rate based on how much closer to the button it started than the fire (Figure 4). |
+| `bot4_vs_bot2.png` | At each q, the share of trials only Bot 4 won and the share only Bot 2 won (Figure 5). |
+| `ship_size.png` | Bot 4's success rate on ships of size 25, 50 and 100 (Figure 6). |
+| `divergence.png` | How often Bots 3 and 4 make a move Bot 2's rule couldn't have made (Figure 7). |
+| `failure_reasons.png` | Why each bot fails (Figure 8). |
+| `tuning.png` | The success rate of every setting in the tuning run (Figure 9). |
 
 ## What the results show
 

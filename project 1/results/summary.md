@@ -84,9 +84,9 @@ Main run: D = 50, 14600 trials (results/main.csv).
 
 | Bot | Success | Minus the chosen Bot 4 (points) |
 |---|---|---|
-| penalty 10 (chosen) | 70.62% | +0.00 ± 0.00 |
 | Bot 2 | 71.12% | +0.50 ± 0.98 |
 | Bot 3 | 70.75% | +0.12 ± 0.81 |
-| penalty 5 | 71.12% | +0.50 ± 0.60 |
-| penalty 20 | 70.25% | -0.38 ± 0.55 |
-| penalty 30 | 69.50% | -1.12 ± 0.81 |
+| Bot 4 penalty 5 | 71.12% | +0.50 ± 0.60 |
+| Bot 4 penalty 10 | 70.62% | +0.00 ± 0.00 |
+| Bot 4 penalty 20 | 70.25% | -0.38 ± 0.55 |
+| Bot 4 penalty 30 | 69.50% | -1.12 ± 0.81 |

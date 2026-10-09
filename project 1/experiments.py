@@ -4,12 +4,19 @@ import pandas as pd
 
 from simulation import run_bot, setup_trial
 
-FIRE_SEED = 1000000   # added to the trial number to get the fire's seed
+# this file runs the bots on thousands of random trials and saves the results as csv files in the results folder,
+# you run it with "python experiments.py" and it takes a few hours since it runs one trial after another.
+# trial number i always uses seed i for the ship and the starting cells, and seed FIRE_SEED + i for the fire,
+# so any trial can be made again exactly the same way, and every bot on a trial faces the exact same fire
+
+FIRE_SEED = 1000000   # added to the trial number to get the fire's seed, so the fire's seed is never the same as the ship's
+# the columns of every results file, each row is one bot on one trial
 COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms"]
 
 
+# this function runs all 4 bots on one trial (the same ship, the same starting cells and the same fire)
+# and returns one row of results for each bot
 def run_trial(D, q, trial):
-    """Bots 1 to 4 on one trial. Returns one row for each bot."""
     ship, bot_start, button, fire_start = setup_trial(D, trial)
     rows = []
     for bot in [1, 2, 3, 4]:
@@ -19,12 +26,15 @@ def run_trial(D, q, trial):
     return rows
 
 
+# this is the main experiment, it uses a 50 by 50 ship and tries every q from 0 to 1 in steps of 0.05.
+# the bots only really differ between q = 0.1 and 0.7 (the "interesting" range) so I run 1000 trials at each of
+# those q values to get a lot of data there, and 200 trials at every other q since all the bots do about the same there.
+# once it's done it saves every row in results/main.csv and also makes the two tables: the success rate of each
+# bot at every q, and how much better bot4 does than every other bot
 def main_run():
-    """D = 50, at every q from 0 to 1 in steps of 0.05: 1,000 trials where the
-    bots differ (q from 0.1 to 0.7) and 200 trials everywhere else."""
     rows = []
     for i in range(21):
-        q = round(0.05 * i, 2)
+        q = round(0.05 * i, 2)   # round so that q is exactly 0.05, 0.1, ... and not 0.15000000000000002
         if q >= 0.1 and q <= 0.7:
             trials = 1000
         else:
@@ -48,8 +58,9 @@ def main_run():
     print(advantage.to_string(index=False))
 
 
+# makes a table with one row for each q and every bot's success rate (in %) at that q,
+# a success is saved as 1 and a failure as 0 so the mean of the success column is the success rate
 def success_table(results):
-    """One row for each q: every bot's success rate, in %."""
     rows = []
     for q in sorted(results["q"].unique()):
         row = [q]
@@ -60,17 +71,17 @@ def success_table(results):
     return pd.DataFrame(rows, columns=["q", "Bot 1", "Bot 2", "Bot 3", "Bot 4"])
 
 
+# calculates how much better bot4 does than another bot for every q between low_q and high_q.
+# since both bots faced the exact same fire on every trial, we can compare them trial by trial: each trial gives
+# 1 (only bot4 won), -1 (only the other bot won) or 0 (both won or both lost), and the mean of all of those
+# is how much better bot4 is. it also returns the 95% confidence interval, which tells us how sure we can be:
+# if the whole interval is above 0 then bot4 really is better and it's not just luck
 def bot4_advantage(results, low_q, high_q, other):
-    """Bot 4's success rate minus the other bot's, for every q from low_q to
-    high_q, in points, and the size of its 95% confidence interval.
-
-    Both bots faced the same fire on every trial, so we compare them trial by
-    trial: each trial gives 1 (only Bot 4 won), -1 (only the other bot won)
-    or 0 (both won or both lost)."""
     diffs = []
     for q in sorted(results["q"].unique()):
         if q < low_q or q > high_q:
             continue
+        # sorting by the trial number lines up the two bots so the same index is the same trial
         bot4 = results[(results["q"] == q) & (results["bot"] == "bot4")].sort_values("trial")
         rival = results[(results["q"] == q) & (results["bot"] == other)].sort_values("trial")
         bot4_success = list(bot4["success"])
@@ -83,11 +94,11 @@ def bot4_advantage(results, low_q, high_q, other):
     for d in diffs:
         total += (d - mean) ** 2
     standard_deviation = math.sqrt(total / (len(diffs) - 1))
-    error = 1.96 * standard_deviation / math.sqrt(len(diffs))
-    return 100 * mean, 100 * error
+    error = 1.96 * standard_deviation / math.sqrt(len(diffs))   # 1.96 is the number for a 95% confidence interval
+    return 100 * mean, 100 * error   # times 100 to turn them into percentage points
 
 
-# The q ranges in the advantage table: (name, lowest q, highest q)
+# the q ranges that are used in the advantage table: (name, lowest q, highest q)
 Q_RANGES = [
     ("0.1 to 0.2", 0.1, 0.2),
     ("0.25 to 0.65", 0.25, 0.65),
@@ -96,8 +107,8 @@ Q_RANGES = [
 ]
 
 
+# makes the advantage table, one row for each q range, with how much better bot4 does than bot1, bot2 and bot3
 def advantage_table(results):
-    """One row for each q range: Bot 4 minus Bot 1, Bot 2 and Bot 3."""
     rows = []
     for name, low_q, high_q in Q_RANGES:
         row = [name]
@@ -108,7 +119,8 @@ def advantage_table(results):
     return pd.DataFrame(rows, columns=["q range", "vs Bot 1", "vs Bot 2", "vs Bot 3"])
 
 
-# The bots tried in tuning: (name, bot number, penalty)
+# the bots that are tried in the tuning run: (name, bot number, penalty), the penalty only matters for bot4,
+# bot2 and bot3 are there so we can see how the different bot4 penalties compare to them
 TUNING_BOTS = [
     ("bot2", 2, 10),
     ("bot3", 3, 10),
@@ -119,8 +131,8 @@ TUNING_BOTS = [
 ]
 
 
+# same as run_trial but for the tuning run, it runs every bot in TUNING_BOTS on one trial and returns a row for each
 def run_tuning_trial(q, trial):
-    """Every bot in TUNING_BOTS on one trial. Returns one row for each."""
     ship, bot_start, button, fire_start = setup_trial(50, trial)
     rows = []
     for name, bot, penalty in TUNING_BOTS:
@@ -130,10 +142,10 @@ def run_tuning_trial(q, trial):
     return rows
 
 
+# this is how I picked bot4's penalty, it tries different penalties on trials 5000 to 5199, which the main run
+# never uses, so picking the penalty didn't use the main results at all (otherwise the main results would be
+# a bit biased towards bot4). the q values go up to 0.8 because a big penalty can hurt when the fire is fast
 def tuning_run():
-    """Different Bot 4 penalties, on trials 5000 to 5199 (the main run never
-    uses them), so choosing the penalty didn't use the main results. The q
-    values go up to 0.8 because a big penalty can hurt when the fire is fast."""
     rows = []
     for q in [0.2, 0.4, 0.6, 0.8]:
         print(f"Tuning run: q = {q}, 200 trials")
@@ -145,17 +157,17 @@ def tuning_run():
     results.to_csv("results/tuning.csv", index=False)
 
 
+# runs only bot4 on one trial with a ship of size D and returns its row
 def run_size_trial(D, q, trial):
-    """Only Bot 4, on one trial on a ship of size D. Returns one row."""
     ship, bot_start, button, fire_start = setup_trial(D, trial)
     result = run_bot(ship, bot_start, button, fire_start, q, 4, FIRE_SEED + trial)
     return [D, q, trial, "bot4", int(result["success"]), result["reason"], result["steps"],
             result["deviations"], round(result["ms"], 3)]
 
 
+# this runs bot4 on a smaller ship (25 by 25) and a bigger ship (100 by 100) with 200 trials at each q
+# from 0.1 to 0.8, to check that the results from the 50 by 50 ship aren't special to that one size
 def size_run():
-    """Bot 4 on smaller and bigger ships (D = 25 and D = 100), 200 trials at
-    each q from 0.1 to 0.8, to check that D = 50 isn't special."""
     rows = []
     for D in [25, 100]:
         for q in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
@@ -167,6 +179,7 @@ def size_run():
     results.to_csv("results/size.csv", index=False)
 
 
+# runs all three experiments one after another
 def main():
     main_run()
     tuning_run()
