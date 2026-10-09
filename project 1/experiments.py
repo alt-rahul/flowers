@@ -1,18 +1,3 @@
-"""Runs the bots on lots of random trials and saves the results as CSV files.
-
-    python experiments.py
-
-Trial number i uses seed i for the ship and the starting tiles, and seed
-FIRE_SEED + i for the fire. So any trial can be made again exactly, and every
-bot on a trial faces the same fire.
-
-It runs one trial after another and takes a few hours on a laptop.
-
-After the main run it also prints and saves two tables:
-    results/success_by_q.csv     each bot's success rate (%) at every q
-    results/bot4_advantage.csv   Bot 4's success rate minus each other bot's,
-                                 on the same trials, for low, middle and high q
-"""
 import math
 
 import pandas as pd
