@@ -55,7 +55,7 @@ Every row of a results file is one bot on one trial:
 | `reason` | `success`, `entered_fire`, `caught`, `button_burned` or `trapped` (cut off from the button) |
 | `steps` | how many moves the bot made |
 | `deviations` | moves Bot 2's rule couldn't have made (0 = it acted like Bot 2) |
-| `ms` | time spent deciding, in milliseconds |
+| `ms` | time spent deciding, in milliseconds (the only column that changes if you run it again) |
 | `fireproof` | 1 if the trial was a certain win from the start |
 
 - `results/main.csv`: the main run at D = 50: every q from 0 to 1 in steps of
@@ -70,6 +70,36 @@ Every row of a results file is one bot on one trial:
   D = 100), 200 trials at each q from 0.1 to 0.8.
 - `results/summary.md` and the charts in `plots/` are made from those by
   `analysis.py`.
+
+## The charts
+
+`analysis.py` saves these in `plots/`:
+
+| Chart | What it shows |
+|---|---|
+| `success_rate.png` | Each bot's success rate at every q, and the share of trials that are a certain win from the start (Figure 1 in the writeup). |
+| `bot4_advantage.png` | Bot 4's success rate minus each other bot's, on the same trials (Figure 2). |
+| `ship_size.png` | Bot 4's success rate on ships of size 25, 50 and 100 (Figure 3). |
+| `divergence.png` | How often Bots 3 and 4 make a move Bot 2's rule couldn't have made (Figure 4). |
+| `failure_reasons.png` | Why each bot fails (Figure 5). |
+| `tuning.png` | Each Bot 4 penalty (and Bots 2 and 3) minus the chosen penalty of 10, with 95% confidence intervals (Figure 6). |
+| `head_to_head.png` | At each q, out of every 1,000 trials: how often Bot 4 won where Bot 3 lost, and the other way round (not in the writeup). |
+
+## What the results show
+
+- Bot 4 is the best bot from q = 0.1 to 0.7. On the same trials it is about
+  1 point ahead of Bots 2 and 3 for q from 0.25 to 0.65, and 4 to 5 points
+  ahead of Bot 1 for q from 0.1 to 0.3.
+- For q from 0.8 to 1 it is about 2 points behind Bot 2. When the fire is
+  that fast, the heat spreads far, so Bot 4 takes detours that give the fire
+  time to cut it off.
+- About half the trials are a certain win from the start (a fireproof path
+  exists). Bots 1, 2 and 3 won all 7,348 of them, and Bot 4 lost 9, all at
+  q = 0.8 or more.
+- In tuning, penalties 5, 10 and 20 did about the same and 30 did worse, so
+  `PENALTY` is 10.
+- Bot 4 does about the same on 25 by 25, 50 by 50 and 100 by 100 ships: a
+  bigger ship makes both the bot's path and the fire's path longer.
 
 ## Differences from the original plan
 

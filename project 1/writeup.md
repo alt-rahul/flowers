@@ -166,9 +166,15 @@ simulating them. Bot 4 won all but 9, which is a clue to its weak spot.
 
 ![Figure 3](plots/ship_size.png)
 
-*Figure 3: Bot 4's success rate on ships of size 25, 50 and 100 ($D = 25$ and 100 have 200 trials at each $q$).*
+*Figure 3: Bot 4's success rate on ships of size 25, 50 and 100. $D = 50$ is the main run, and $D = 25$ and 100 have 200 trials at each $q$. The three lines are almost on top of each other, so the size of the ship hardly matters.*
 
-SIZE_TEXT
+To see whether the size of the ship matters, I also ran Bot 4 on 25 by 25 and
+100 by 100 ships (Figure 3). A bigger ship makes the bot's path to the button
+longer, but it makes the fire's path longer too, so the race between them stays
+about the same. The 100 by 100 ships do a few points worse at $q = 0.7$ and 0.8,
+but with 200 trials each rate is only known to about $\pm 7$ points there, and
+those ships also had a few fewer certain wins (47% against 50%), so I can't say
+the size really matters.
 
 To check whether Bot 4 really decides differently from Bot 2, I count every move
 Bot 2's rule couldn't have made, meaning a move that isn't along some shortest
