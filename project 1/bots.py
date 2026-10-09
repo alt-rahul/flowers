@@ -1,6 +1,3 @@
-"""The four bots. Each function returns the path the bot wants to take (a list
-of positions from where it stands to the button), or None if every route to
-the button runs through fire."""
 from search import a_star, bfs, distance_map
 from ship import check_neighbors
 

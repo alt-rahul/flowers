@@ -24,8 +24,8 @@ def setup_trial(D, seed):
 #this is the run bot method, this will run each of the bots in timesteps, if the bot reaches the same cell as the button then it wins
 # if the bot reachs the same tile as the fire than it fails - the fire spreads at each timestep
 # so the only the fire generation uses the random seeds not the the bots themselves so we can replicate the fire so each bot can experince the 
-#same fire generating pattern. The penalty parameter is only for bot 4 (how much it pays for hot tiles),
-# which is explained in bots.py. This method returns a dictionary of information like whether the bot was successful, if it wasn't
+#same fire generating pattern. The penalty parameter is only for bot4 which tell penalizes cells that are closer to the fire.
+# which is explained in a different file. This method returns a dictionary of information like whether the bot was successful, if it wasn't
 # what's the reason?, how many moves the bot made, the exact path the bot had taken, and a "deviations" variable where it counts the # of different 
 #steps that bot3 and bot4 took that were different from what bot 2 would've taken, because bot2 is BFS but avoids the fire, and bot3 and bot4 are
 #technically variations of the bot2 with more restrictions, we check if the bot3 and/or bot4 choose a cell that is further away from the button than

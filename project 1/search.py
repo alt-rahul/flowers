@@ -11,7 +11,7 @@ import math
 from collections import deque
 
 
-def follow_prev(prev, goal):
+def build_from_prev(prev, goal):
     """Rebuild the path by following prev back from the goal to the start."""
     path = []
     state = goal
@@ -35,7 +35,7 @@ def bfs(ship, start, goal, restricted):
     while len(fringe) > 0:
         current_state = fringe.popleft()
         if current_state == goal:
-            return follow_prev(prev, goal)
+            return build_from_prev(prev, goal)
         for child in ship.neighbors(current_state):
             if child not in restricted and child not in closed_set and child not in prev:
                 fringe.append(child)
@@ -51,7 +51,7 @@ def distance_map(ship, starts, restricted):
     The same BFS with no goal: it runs until the fringe is empty. For the fire,
     starts is every burning tile at once."""
     dist = []
-    for r in range(ship.D):
+    for row in range(ship.D):
         dist.append([math.inf] * ship.D)
     fringe = deque()
     for r, c in starts:
@@ -90,7 +90,7 @@ def a_star(ship, start, goal, cost):
     while len(fringe) > 0:
         priority, g, curr = heapq.heappop(fringe)
         if curr == goal:
-            return follow_prev(prev, goal)
+            return build_from_prev(prev, goal)
         for child in ship.neighbors(curr):
             cr, cc = child
             dist_to_child = dist[curr] + cost[cr][cc]
@@ -126,7 +126,7 @@ def fireproof_path(ship, start, goal, fire_dist):
                 if child == goal:
                     if fire_dist[cr][cc] >= k:
                         prev[child] = current_state
-                        return follow_prev(prev, goal)
+                        return build_from_prev(prev, goal)
                     continue
                 prev[child] = current_state
                 if fire_dist[cr][cc] > k:
