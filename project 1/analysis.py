@@ -250,12 +250,14 @@ def tuning_difference(tuning, bot):
 def plot_tuning(tuning):
     labels = []
     diffs = []
+    errors = []
     for bot, label in TUNING_LABELS:
         mean, error = tuning_difference(tuning, bot)
         labels.append(label)
         diffs.append(mean)
+        errors.append(error)
     plt.figure(figsize=(8, 5))
-    plt.barh(labels, diffs)
+    plt.barh(labels, diffs, xerr=errors, capsize=4)   # the lines show the 95% confidence interval
     plt.axvline(0, color="black")
     plt.xlabel("Success rate minus the chosen Bot 4 (penalty 10), in points")
     plt.title("Bot 4 tuning on 800 separate trials")
