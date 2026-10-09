@@ -89,17 +89,17 @@ Every row of a results file is one bot on one trial:
 
 ## What the results show
 
-- Bot 4 is the best bot from q = 0.1 to 0.7. On the same trials it is about
-  1 point ahead of Bots 2 and 3 for q from 0.25 to 0.65, and 4 to 5 points
-  ahead of Bot 1 for q from 0.1 to 0.3.
-- For q from 0.8 to 1 it is about 2 points behind Bot 2. When the fire is
+- Bot 4 is the best bot from q = 0.2 to 0.7. On the same trials it is
+  1.5 points ahead of Bot 2 and 0.8 points ahead of Bot 3 for q from 0.25 to
+  0.65, and 3 to 6 points ahead of Bot 1 for q from 0.15 to 0.4.
+- For q from 0.8 to 1 it is about 2.5 points behind Bot 2. When the fire is
   that fast, the heat spreads far, so Bot 4 takes detours that give the fire
   time to cut it off.
-- From q = 0.75 up, thinking stops mattering: Bot 1, which never replans,
+- From q = 0.6 up, thinking stops mattering: Bot 1, which never replans,
   wins exactly the same trials as Bot 2, and at q = 1 all four bots win the
   same 53% of trials.
-- In tuning, penalties 5, 10 and 20 did about the same and 30 did worse, so
-  `PENALTY` is 10.
+- In tuning, penalties 5, 10, 20 and 30 all did about the same, so `PENALTY`
+  stays at 10.
 - Bot 4 does about the same on 25 by 25, 50 by 50 and 100 by 100 ships: a
   bigger ship makes both the bot's path and the fire's path longer.
 
