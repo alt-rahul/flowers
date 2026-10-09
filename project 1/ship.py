@@ -1,12 +1,10 @@
 
 import numpy as np
 
-"""
-This is the class tile, basically each cell is actually a "tile" where it it has the ability to 
-have either a button, a bot, or a fire. The ship is made of 2d array of tiles where the bot and
-the fire can traverse through. 
 
-"""
+# This is the class tile, basically each cell is actually a "tile" where it it has the ability to 
+# have either a button, a bot, or a fire. The ship is made of 2d array of tiles where the bot and
+# the fire can traverse through. 
 
 class Tile:
     def __init__(self):
