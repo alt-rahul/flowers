@@ -53,11 +53,10 @@ def heat_map(ship, q):
         heat.append(row)
     return heat
 
-
+#this function is builds the path for bot4, first it calculates the heat values for every cell,
+#then based on if the cell is already on fire or if it's not, calculates the cost for each cell
+#once the cost list is built, it passes it through the a_star fuction and gets a path 
 def bot4_path(ship, pos, button, q, penalty=PENALTY):
-    """Bot 4: A* to the button, where each tile costs 1 + penalty * heat to
-    step on, and a burning tile costs BURNING_COST. Returns None if even the
-    cheapest path has to go through fire."""
     heat = heat_map(ship, q)
     cost = []
     for r in range(ship.D):
@@ -72,10 +71,9 @@ def bot4_path(ship, pos, button, q, penalty=PENALTY):
     path = a_star(ship, pos, button, cost)
     if path is None:
         return None
-    # BURNING_COST is bigger than any route that avoids the fire could ever
-    # cost, so if the cheapest path still steps on fire, every route to the
-    # button runs through fire: the bot is trapped.
-    for r, c in path:
+    #this exists because despite burning cost being so high, there might still be a path
+    # with a fire cell that is cheap enough to traverse so if any cell in the path is on fire, this declares a no-go
+    for r, c in path: 
         if ship.grid[r][c].on_fire:
             return None
     return path
