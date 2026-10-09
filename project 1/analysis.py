@@ -481,7 +481,7 @@ def main():
     plot_failure_reasons(results)
     plot_tuning(tuning)
     print("Measuring every trial's head start (this takes a couple of minutes)...")
-    plot_head_start(results, head_starts(1000))
+    plot_head_start(results, head_starts(200))
 
     report.append("# Results\n")
     report.append(f"Main run: D = 50, {len(results) // 4} trials (results/main.csv).\n")

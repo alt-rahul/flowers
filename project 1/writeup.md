@@ -115,19 +115,19 @@ Bot 3 (Figure 2), and a trial with all four bots takes about half a second on a
 
 I used $D = 50$ for the main run, because a trial on a 100 by 100 ship takes
 about 10 times longer (5 seconds against half a second), so the same experiment
-would take about 20 hours instead of 2. I checked $D = 25$ and 100 separately
-(Figure 6). I tried every $q$ from 0 to 1 in steps of 0.05. The bots only
-really differ between $q = 0.1$ and 0.7, so I ran 1,000 trials at each of those
-values and 200 at the others: 14,600 trials, with all four bots on every one.
-Trial $i$ always uses seed $i$ for the ship and the starting cells. One success
-rate from 1,000 trials is only known to about $\pm 2.5$ points, but since the
-bots face the same fire I can compare them trial by trial, which is much more
-exact: at $q = 0.4$ the gap between Bot 4 and Bot 2 is known to $\pm 0.8$
-points instead of $\pm 3.5$.
+would take about 6 hours instead of about 35 minutes. I checked $D = 25$ and 100
+separately (Figure 6). I tried every $q$ from 0 to 1 in steps of 0.05, with 200
+trials at each one: 4,200 trials, with all four bots on every one. Trial $i$
+always uses seed $i$ for the ship and the starting cells, so every $q$ uses the
+same 200 ships, and the only thing that changes from one $q$ to the next is how
+fast the fire spreads. One success rate from 200 trials is only known to about
+$\pm$SINGLE_CI points, but since the bots face the same fire I can compare them
+trial by trial, which is much more exact: at $q = 0.4$ the gap between Bot 4 and
+Bot 2 is known to $\pm$PAIRED_CI points instead of $\pm$INDEP_CI.
 
 ![Figure 3](plots/success_rate.png)
 
-*Figure 3: Success rate against flammability $q$ for every bot. Below $q = 0.1$ and from 0.75 up there are only 200 trials (trials 0 to 199). Those trials happen to be a little easier than average (at $q = 0.7$ the bots won 65 to 67% of them, against 61 to 62% of all 1,000), which is why the curves step up a little at 0.75.*
+*Figure 3: Success rate against flammability $q$ for every bot, with 200 trials at each $q$ (the same 200 ships at every $q$).*
 
 *Table 1: Success rates at some values of $q$.*
 
@@ -193,7 +193,7 @@ they don't, which is why comparing them on the same trials matters so much.
 
 ![Figure 6](plots/ship_size.png)
 
-*Figure 6: Bot 4's success rate on ships of size 25, 50 and 100. $D = 50$ is the main run, and $D = 25$ and 100 have 200 trials at each $q$. The three lines are almost on top of each other, so the size of the ship hardly matters.*
+*Figure 6: Bot 4's success rate on ships of size 25, 50 and 100. $D = 50$ is the main run, and $D = 25$ and 100 have 100 trials at each $q$. The three lines are almost on top of each other, so the size of the ship hardly matters.*
 
 To see whether the size of the ship matters, I also ran Bot 4 on 25 by 25 and
 100 by 100 ships (Figure 6). A bigger ship makes the bot's path to the button

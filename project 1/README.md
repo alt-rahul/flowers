@@ -28,7 +28,7 @@ tests). Run everything from this folder:
 ```bash
 cd "project 1"
 python -m pytest          # the tests
-python experiments.py     # all the experiments (a few hours)
+python experiments.py     # all the experiments (about an hour and a half)
 python analysis.py        # tables (results/summary.md) and charts (plots/), a few minutes
 ```
 
@@ -59,7 +59,7 @@ Every row of a results file is one bot on one trial:
 | `ms` | time spent deciding, in milliseconds (the only column that changes if you run it again) |
 
 - `results/main.csv`: the main run at D = 50: every q from 0 to 1 in steps of
-  0.05, with 1,000 trials at each q from 0.1 to 0.7 and 200 elsewhere.
+  0.05, with 200 trials at each q (the same 200 ships at every q).
 - `results/success_by_q.csv`: each bot's success rate (%) at every q.
 - `results/bot4_advantage.csv`: Bot 4's success rate minus each other bot's,
   on the same trials, for low, middle and high q (points, 95% confidence).
@@ -67,7 +67,7 @@ Every row of a results file is one bot on one trial:
   separate trials (q = 0.2, 0.4, 0.6 and 0.8, trial numbers 5000 to 5199,
   which the main run never uses).
 - `results/size.csv`: Bot 4 alone on smaller and bigger ships (D = 25 and
-  D = 100), 200 trials at each q from 0.1 to 0.8.
+  D = 100), 100 trials at each q from 0.1 to 0.8.
 - `results/summary.md` and the charts in `plots/` are made from those by
   `analysis.py`.
 

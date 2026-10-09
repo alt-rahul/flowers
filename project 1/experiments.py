@@ -30,19 +30,15 @@ def run_trial(D, q, trial):
 
 
 # this is the main part of the experiment, it uses a 50 by 50 ship and tries every q from 0 to 1 in steps of 0.05.
-# the bots mostly only differ between the ranges of q = 0.1 and 0.7 (the "interesting" range) so I ran 1000 trials at each of
-# those q values to get a lot of data there, and 200 trials at every other q since all the bots basicaly do the same thing
-# or display the same behaviors around those non-intersting values of q. 
+# I ran 200 trials at every q, and since trial i is always the same ship, every q uses the exact same 200 ships
+# and starting cells, so the only thing that changes from one q to the next is how fast the fire spreads.
 # once it's done it saves every row in a csv file and also makes the two tables: the success rate of each
 # bot at every q, and how much better bot4 does than every other bot (to measure the performance gains)
 def main_run():
     rows = []
     for i in range(21):
         q = round(0.05 * i, 2) 
-        if q >= 0.1 and q <= 0.7: #filtes for interesting q values
-            trials = 1000
-        else:
-            trials = 200
+        trials = 200
         print(f"Main run: q = {q}, {trials} trials")
         for trial in range(trials):
             for row in run_trial(50, q, trial):
@@ -166,14 +162,14 @@ def run_size_trial(D, q, trial):
             result["deviations"], round(result["ms"], 3)]
 
 
-# this runs bot4 on a smaller ship (25 by 25) and a bigger ship (100 by 100) with 200 trials at each q
+# this runs bot4 on a smaller ship (25 by 25) and a bigger ship (100 by 100) with 100 trials at each q
 # from 0.1 to 0.8, to check that the results from the 50 by 50 ship aren't special to that one size
 def size_run():
     rows = []
     for D in [25, 100]:
         for q in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
-            print(f"Ship size run: D = {D}, q = {q}, 200 trials")
-            for trial in range(200):
+            print(f"Ship size run: D = {D}, q = {q}, 100 trials")
+            for trial in range(100):
                 rows.append(run_size_trial(D, q, trial))
 
     results = pd.DataFrame(rows, columns=COLUMNS)
