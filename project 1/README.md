@@ -13,11 +13,11 @@ Each file is one step, in the order things happen:
 | `ship.py` | The ship: a 2D grid of `Tile` objects (open or blocked, on fire, bot, button). `generate_ship` builds one with the two phases from the assignment. |
 | `fire.py` | `spread_fire`: one fire update. Every tile is checked against the fire as it was at the start of the step, then the new fires start (synchronous). |
 | `search.py` | BFS and A* from the lecture pseudocode (`fringe`, `closed_set`, `prev`), plus `distance_map` (BFS distances to every tile) and `fireproof_path` (the certain-win check). |
-| `bots.py` | One function per bot that returns the path it wants to take. Bot 4's race model and its two settings (`THRESHOLD`, `PENALTY`) are here too. |
+| `bots.py` | One function per bot that returns the path it wants to take. Bot 4's heat map and its setting (`PENALTY`) are here too. |
 | `simulation.py` | `Trial` (one ship with its start tiles and fire), `run_bot` (one bot on one trial, one time step at a time), and `is_certain_win`. |
-| `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`. |
+| `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`, plus two tables: each bot's success rate at every q, and Bot 4's advantage over the other bots. |
 | `analysis.py` | Reads the saved results and makes the tables (`results/summary.md`) and the charts in `plots/`. |
-| `pictures.py` | Draws the ship generation, Bot 4's danger radius, single trials and single Bot 4 decisions, into `plots/`. |
+| `pictures.py` | Draws the ship generation, Bot 4's heat maps, single trials and single Bot 4 decisions, into `plots/`. |
 | `tests/` | Checks for each step (`python -m pytest`). |
 | `writeup.md` | The writeup, with its figures in `plots/`. |
 
@@ -62,8 +62,12 @@ Every row of a results file is one bot on one trial:
 
 - `results/main.csv`: the main run at D = 50: every q from 0 to 1 in steps of
   0.05, with 1,000 trials at each q from 0.1 to 0.7 and 200 elsewhere.
-- `results/tuning.csv`: Bot 2, Bot 3 and different Bot 4 settings on 800
-  separate trials (trial numbers 5000 to 5199, which the main run never uses).
+- `results/success_by_q.csv`: each bot's success rate (%) at every q.
+- `results/bot4_advantage.csv`: Bot 4's success rate minus each other bot's,
+  on the same trials, for low, middle and high q (points, 95% confidence).
+- `results/tuning.csv`: Bot 2, Bot 3 and different Bot 4 penalties on 800
+  separate trials (q = 0.2, 0.4, 0.6 and 0.8, trial numbers 5000 to 5199,
+  which the main run never uses).
 - `results/summary.md` and the pictures in `plots/` are made from those by
   `analysis.py` and `pictures.py`.
 
@@ -72,10 +76,10 @@ Every row of a results file is one bot on one trial:
 - Bot 4's heuristic is the Manhattan distance to the button instead of the
   Euclidean distance: the bot only moves up, down, left and right, so it is
   the exact cost on an open grid and is still admissible.
-- Bot 4 uses a race between the bot and the fire (how likely the fire gets to
-  a tile first) instead of the one-step "more than 60% chance of catching
-  fire" rule, which can only flag tiles next to the fire. The writeup explains
-  why.
+- Bot 4 puts the fire's risk into A*'s path cost, as planned, with a heat
+  map: a tile's heat is q^(d - 1), where d is the fire's distance to it, and
+  stepping onto it costs 1 + PENALTY * heat. A burning tile costs a huge
+  number (BURNING_COST), so the bot never steps on fire.
 - BFS has one line more than the lecture pseudocode: a child that is already
   in `prev` is already on the fringe, so it isn't added again.
 - From the instructor's guidance: every bot faces the same fire on a trial,

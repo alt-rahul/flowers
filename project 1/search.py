@@ -75,10 +75,13 @@ def manhattan_distance(a, b):
 
 def a_star(ship, start, goal, cost):
     """Cheapest path from start to goal, where stepping onto tile (r, c) costs
-    cost[r][c] (math.inf means never step there). Returns None if there is no path.
+    cost[r][c]. Returns None if there is no path.
 
     Uniform cost search with priority = g + h, where g = dist[state] is the
     cheapest cost found so far and h is the Manhattan distance to the goal.
+    The costs decide which path is the cheapest; h only decides which tiles
+    A* looks at first. Every step costs at least 1, so h never overestimates
+    and A* still finds the cheapest path.
     Like the A* in the notes there is no closed list: when a child gets a
     cheaper dist it is just added to the fringe again."""
     fringe = [(manhattan_distance(start, goal), 0.0, start)]   # (priority, g, state)
@@ -90,8 +93,6 @@ def a_star(ship, start, goal, cost):
             return follow_prev(prev, goal)
         for child in ship.neighbors(curr):
             cr, cc = child
-            if cost[cr][cc] == math.inf:
-                continue
             dist_to_child = dist[curr] + cost[cr][cc]
             if child not in dist or dist_to_child < dist[child]:
                 dist[child] = dist_to_child

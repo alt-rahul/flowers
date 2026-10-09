@@ -1,5 +1,4 @@
 import heapq
-import math
 
 import numpy as np
 
@@ -73,7 +72,7 @@ def cheapest_cost(ship, start, goal, cost):
             return g
         for child in ship.neighbors(curr):
             step = cost[child[0]][child[1]]
-            if step != math.inf and (child not in best or g + step < best[child]):
+            if child not in best or g + step < best[child]:
                 best[child] = g + step
                 heapq.heappush(fringe, (best[child], child))
     return None
@@ -83,13 +82,13 @@ def test_a_star_finds_the_cheapest_path():
     for seed in range(10):
         ship = generate_ship(20, seed)
         start, goal = two_random_tiles(ship)
-        # Costs like Bot 4's: mostly 1, some 21, a few that can't be entered.
+        # Costs like Bot 4's: mostly 1, some 21, a few huge ones (like burning tiles).
         cost = all_ones(ship.D)
         for r in range(ship.D):
             for c in range(ship.D):
                 roll = np.random.random()
                 if roll < 0.05:
-                    cost[r][c] = math.inf
+                    cost[r][c] = 1000000
                 elif roll < 0.3:
                     cost[r][c] = 21.0
         cost[goal[0]][goal[1]] = 1.0

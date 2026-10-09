@@ -201,15 +201,13 @@ def plot_head_to_head(results, qs):
 
 
 # The bots tried in tuning, as they are named in results/tuning.csv.
-TUNING_CHOSEN = "bot4 threshold=0.6 penalty=20"
+TUNING_CHOSEN = "bot4 penalty=10"
 TUNING_LABELS = [
     ("bot2", "Bot 2"),
     ("bot3", "Bot 3"),
-    ("bot4 threshold=0.4 penalty=20", "θ = 0.4, λ = 20"),
-    ("bot4 threshold=0.8 penalty=20", "θ = 0.8, λ = 20"),
-    ("bot4 threshold=0.6 penalty=5", "θ = 0.6, λ = 5"),
-    ("bot4 threshold=0.6 penalty=100", "θ = 0.6, λ = 100"),
-    ("bot4 one-step rule", "one-step 60% rule"),
+    ("bot4 penalty=5", "penalty 5"),
+    ("bot4 penalty=20", "penalty 20"),
+    ("bot4 penalty=30", "penalty 30"),
 ]
 
 
@@ -236,7 +234,7 @@ def plot_tuning(tuning):
     plt.figure(figsize=(8, 5))
     plt.barh(labels, diffs)
     plt.axvline(0, color="black")
-    plt.xlabel("Success rate minus the chosen Bot 4 (θ = 0.6, λ = 20), in points")
+    plt.xlabel("Success rate minus the chosen Bot 4 (penalty 10), in points")
     plt.title("Bot 4 tuning on 800 separate trials")
     save_chart("tuning.png")
 
@@ -357,7 +355,7 @@ def table_tuning(tuning):
     report.append("\n## Bot 4 tuning (800 separate trials)\n")
     report.append("| Bot | Success | Minus the chosen Bot 4 (points) |")
     report.append("|---|---|---|")
-    for bot, label in [(TUNING_CHOSEN, "θ = 0.6, λ = 20 (chosen)")] + TUNING_LABELS:
+    for bot, label in [(TUNING_CHOSEN, "penalty 10 (chosen)")] + TUNING_LABELS:
         rows = tuning[tuning["bot"] == bot]
         mean, error = tuning_difference(tuning, bot)
         report.append(f"| {label} | {100 * rows['success'].mean():.2f}% | {mean:+.2f} ± {error:.2f} |")

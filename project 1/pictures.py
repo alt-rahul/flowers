@@ -1,5 +1,5 @@
-"""Draws the pictures in the writeup: a ship being generated, which tiles Bot 4
-treats as predicted fire, single trials, and single Bot 4 decisions.
+"""Draws the pictures in the writeup: a ship being generated, Bot 4's heat map,
+single trials, and single Bot 4 decisions.
 
     python pictures.py
 """
@@ -8,7 +8,7 @@ matplotlib.use("Agg")   # save pictures to files without opening a window
 import matplotlib.pyplot as plt
 import numpy as np
 
-from bots import THRESHOLD, bot2_path, bot4_path, danger_radius, predicted_fire
+from bots import PENALTY, bot2_path, bot4_path, heat_map
 from experiments import FIRE_SEED
 from fire import spread_fire
 from simulation import run_bot, setup_trial
@@ -19,7 +19,6 @@ BLACK = [0, 0, 0]          # wall
 WHITE = [1, 1, 1]          # open tile
 ORANGE = [1, 0.6, 0]       # burned, or a dead end
 RED = [1, 0, 0]            # burning now
-YELLOW = [1, 0.85, 0]      # predicted fire
 BLUE = [0.2, 0.5, 0.9]     # opened in phase 2
 
 D = 50   # the trials drawn are all from the main run
@@ -84,24 +83,38 @@ def draw_ship_phases():
     plt.close()
 
 
-def draw_danger_radius():
-    """For a tile the bot needs k moves to reach: the largest fire distance d
-    at which Bot 4 treats it as predicted fire, for several values of q."""
-    ks = list(range(1, 41))
-    plt.figure(figsize=(8, 5))
-    for q in [0.1, 0.2, 0.3, 0.5, 0.8]:
-        radius = danger_radius(q, THRESHOLD, 40)
-        values = []
-        for k in ks:
-            values.append(radius[k])
-        plt.plot(ks, values, label=f"Bot 4, q = {q}")
-    plt.plot(ks, [1] * len(ks), "k--", label="Bot 3's buffer (always 1)")
-    plt.xlabel("Moves the bot needs to reach the tile (k)")
-    plt.ylabel("Largest fire distance treated as fire (d)")
-    plt.title("Which tiles Bot 4 treats as predicted fire")
-    plt.legend()
-    plt.grid()
-    plt.savefig("plots/danger_radius.png", dpi=120, bbox_inches="tight")
+def heat_colour(heat):
+    """White for heat 0, getting more orange as the heat goes up to 1."""
+    return [1, 1 - 0.6 * heat, 1 - heat]
+
+
+def draw_heat_maps(trial_number, fire_steps):
+    """The same fire, and the heat map Bot 4 would make from it, for a slow
+    fire (q = 0.2) and a fast fire (q = 0.8)."""
+    ship, bot_start, button, fire_start = setup_trial(D, trial_number)
+    burned_by_step(ship, fire_start, 0.5, FIRE_SEED + trial_number, fire_steps)
+
+    plt.figure(figsize=(10, 5))
+    qs = [0.2, 0.8]
+    for i in range(len(qs)):
+        q = qs[i]
+        heat = heat_map(ship, q)
+        picture = []
+        for r in range(ship.D):
+            row = []
+            for c in range(ship.D):
+                if not ship.grid[r][c].is_open:
+                    row.append(BLACK)
+                elif ship.grid[r][c].on_fire:
+                    row.append(RED)
+                else:
+                    row.append(heat_colour(heat[r][c]))
+            picture.append(row)
+        plt.subplot(1, 2, i + 1)
+        plt.imshow(picture)
+        plt.title(f"Heat map for q = {q}")
+        plt.axis("off")
+    plt.savefig("plots/heat_maps.png", dpi=120, bbox_inches="tight")
     plt.close()
 
 
@@ -152,7 +165,8 @@ def draw_trial(q, trial_number):
 
 def draw_decision(q, trial_number):
     """Replays Bot 4 until the first move where its plan is longer than the
-    shortest path that avoids the fire (Bot 2's choice), then draws that moment."""
+    shortest path that avoids the fire (Bot 2's choice), then draws that moment:
+    the heat map, the shortest path (dashed) and Bot 4's plan (solid)."""
     ship, bot_start, button, fire_start = setup_trial(D, trial_number)
     np.random.seed(FIRE_SEED + trial_number)   # the same fire Bot 4 saw
     ship.clear()
@@ -162,25 +176,32 @@ def draw_decision(q, trial_number):
     while True:
         plan = bot4_path(ship, pos, button, q)
         short = bot2_path(ship, pos, button)
+        if plan is None or short is None:
+            print(f"Trial {trial_number}, q = {q}: Bot 4 was cut off before it took a longer path")
+            return
         if len(plan) > len(short):
             break
         pos = plan[1]
+        if pos == button:
+            print(f"Trial {trial_number}, q = {q}: Bot 4 never took a longer path than Bot 2")
+            return
         spread_fire(ship, q)
+        if ship.tile(pos).on_fire:
+            print(f"Trial {trial_number}, q = {q}: Bot 4 was caught before it took a longer path")
+            return
         move += 1
 
     burning = ship.fire_cells()
-    danger = predicted_fire(ship, pos, button, q, THRESHOLD)
-    short_flagged = 0
-    for p in short[1:]:
-        if p in danger:
-            short_flagged += 1
-    plan_flagged = 0
-    for p in plan[1:]:
-        if p in danger:
-            plan_flagged += 1
+    heat = heat_map(ship, q)
+    short_cost = 0
+    for r, c in short[1:]:
+        short_cost += 1 + PENALTY * heat[r][c]
+    plan_cost = 0
+    for r, c in plan[1:]:
+        plan_cost += 1 + PENALTY * heat[r][c]
     print(f"Trial {trial_number}, q = {q}, move {move}:")
-    print(f"  shortest path: {len(short) - 1} steps, {short_flagged} predicted-fire tiles")
-    print(f"  Bot 4's plan:  {len(plan) - 1} steps, {plan_flagged} predicted-fire tiles")
+    print(f"  shortest path: {len(short) - 1} steps, cost {short_cost:.1f}")
+    print(f"  Bot 4's plan:  {len(plan) - 1} steps, cost {plan_cost:.1f}")
 
     picture = []
     for r in range(ship.D):
@@ -190,10 +211,8 @@ def draw_decision(q, trial_number):
                 row.append(BLACK)
             elif (r, c) in burning:
                 row.append(RED)
-            elif (r, c) in danger:
-                row.append(YELLOW)
             else:
-                row.append(WHITE)
+                row.append(heat_colour(heat[r][c]))
         picture.append(row)
 
     plt.figure(figsize=(7, 7))
@@ -211,15 +230,15 @@ def draw_decision(q, trial_number):
     plt.ylim(max(rows) + 3, min(rows) - 3)   # row 0 at the top, like the grid
     plt.axis("off")
     plt.title(f"Trial {trial_number}, q = {q}, move {move}\n"
-              f"dashed: shortest path, {len(short) - 1} steps, {short_flagged} predicted-fire tiles\n"
-              f"solid: Bot 4's plan, {len(plan) - 1} steps, {plan_flagged} predicted-fire tiles")
+              f"dashed: shortest path, {len(short) - 1} steps, cost {short_cost:.1f}\n"
+              f"solid: Bot 4's plan, {len(plan) - 1} steps, cost {plan_cost:.1f}")
     plt.savefig(f"plots/decision_q{q}_trial{trial_number}.png", dpi=120, bbox_inches="tight")
     plt.close()
 
 
 def main():
     draw_ship_phases()
-    draw_danger_radius()
+    draw_heat_maps(463, 15)
     draw_trial(0.3, 463)
     draw_trial(0.2, 2252)
     draw_decision(0.3, 463)

@@ -1,14 +1,12 @@
 """The four bots. Each function returns the path the bot wants to take (a list
 of positions from where it stands to the button), or None if every route to
 the button runs through fire."""
-import math
-
 from search import a_star, bfs, distance_map
 from ship import check_neighbors
 
 # Bot 4's settings
-THRESHOLD = 0.6   # a tile counts as "predicted fire" above this chance
-PENALTY = 20      # extra cost for stepping onto a predicted-fire tile
+PENALTY = 10              # how much extra Bot 4 pays to step onto a tile with heat 1
+BURNING_COST = 1000000    # the cost of stepping onto a burning tile: so big that the bot never does
 
 
 def bot1_path(ship, pos, button):
@@ -39,107 +37,62 @@ def bot3_path(ship, pos, button):
 
 # ---------------------------------------------------------------- Bot 4 ----
 #
-# Every tile is a race between the bot and the fire:
-#     k = how many moves the bot needs to get there3
-#     d = how many tiles the fire has to travel to get there
-# Along one route the fire's front moves forward one tile per step with
-# probability q, so in k steps it moves forward Binomial(k, q) tiles. If
-# P(Binomial(k, q) >= d) > THRESHOLD, the fire will probably get there first,
-# and the tile counts as "predicted fire".
+# Bot 4 makes a "heat map" of the ship: the closer a tile is to the fire, the
+# hotter it is. Then it runs A* to the button, where hot tiles cost more to step
+# on. So the bot goes around the hot area when the way around isn't too long,
+# and goes through it when every other way is much longer.
 #
-# Then A* to the button, where stepping onto a tile costs:
-#     infinity        if it is burning now
-#     1 + PENALTY     if it is predicted fire
-#     1               otherwise
-
-radius_tables = {}   # saved tables, so each one is only worked out once
-
-
-def danger_radius(q, threshold, max_steps):
-    """radius[k] = the largest fire distance d with P(Binomial(k, q) >= d) > threshold,
-    for k = 0 to max_steps. A tile the bot reaches in k moves is predicted fire
-    when the fire's distance to it is at most radius[k]."""
-    if (q, threshold, max_steps) in radius_tables:
-        return radius_tables[(q, threshold, max_steps)]
-
-    pmf = [0.0] * (max_steps + 1)   # pmf[j] = P(the fire has moved forward exactly j tiles)
-    pmf[0] = 1.0
-    radius = []
-    for k in range(max_steps + 1):
-        if k > 0:
-            # One more step: the fire either stays (chance 1 - q) or moves forward one tile (chance q).
-            for j in range(k, 0, -1):
-                pmf[j] = pmf[j] * (1 - q) + pmf[j - 1] * q
-            pmf[0] = pmf[0] * (1 - q)
-
-        # Add up P(at least d) from the top; the first d above the threshold is the largest one.
-        total = 0.0
-        largest = -1
-        for d in range(k, -1, -1):
-            total += pmf[d]
-            if total > threshold:
-                largest = d
-                break
-        radius.append(largest)
-
-    radius_tables[(q, threshold, max_steps)] = radius
-    return radius
+# The heat of a tile is q ** (d - 1), where d is how many tiles the fire has to
+# travel to get there. A tile right next to the fire (d = 1) has heat 1, and
+# every tile further away multiplies the heat by q:
+#     q = 0.2:  1, 0.2, 0.04, 0.008, ...   (a slow fire: only the tiles next to it are hot)
+#     q = 0.8:  1, 0.8, 0.64, 0.51, ...    (a fast fire: tiles far away are hot too)
+#
+# Stepping onto a tile costs:
+#     BURNING_COST           if it is burning
+#     1 + PENALTY * heat     otherwise
 
 
-def predicted_fire(ship, pos, button, q, threshold):
-    """The set of tiles Bot 4 thinks the fire will reach before the bot does."""
-    fire = ship.fire_cells()
-    fire_dist = distance_map(ship, fire, set())   # d for every tile
-    bot_dist = distance_map(ship, [pos], fire)    # k for every tile
-    radius = danger_radius(q, threshold, ship.D * ship.D)
-
-    danger = set()
-    for r, c in ship.open_cells():
-        if ship.grid[r][c].on_fire or bot_dist[r][c] == math.inf:
-            continue
-        k = bot_dist[r][c]
-        if (r, c) == button:
-            k = k - 1   # the button is pressed before the fire moves
-        if fire_dist[r][c] <= radius[k]:
-            danger.add((r, c))
-    return danger
-
-
-def one_step_predicted_fire(ship, q, threshold):
-    """The literal "more than 60% chance of catching fire" rule, only used to
-    test it in tuning: a tile counts if it catches fire NEXT step with a chance
-    above the threshold. Only tiles next to the fire can ever count."""
-    danger = set()
-    for r, c in ship.open_cells():
-        tile = ship.grid[r][c]
-        if tile.on_fire:
-            continue
-        K = 0
-        for nr, nc in tile.neighbors:
-            if ship.grid[nr][nc].on_fire:
-                K += 1
-        if 1 - (1 - q) ** K > threshold:
-            danger.add((r, c))
-    return danger
+def heat_map(ship, q):
+    """heat[r][c] = q ** (d - 1) for every open tile that isn't burning, where
+    d is the fire's distance to the tile. Walls and burning tiles get 0."""
+    fire_dist = distance_map(ship, ship.fire_cells(), set())   # d for every tile
+    heat = []
+    for r in range(ship.D):
+        row = []
+        for c in range(ship.D):
+            tile = ship.grid[r][c]
+            if tile.is_open and not tile.on_fire:
+                d = fire_dist[r][c]
+                row.append(q ** (d - 1))
+            else:
+                row.append(0)
+        heat.append(row)
+    return heat
 
 
-def bot4_path(ship, pos, button, q, threshold=THRESHOLD, penalty=PENALTY, one_step=False):
-    """Bot 4: A* to the button, avoiding burning tiles and paying extra for
-    predicted-fire tiles. one_step=True swaps the race for the literal
-    one-step rule (only used in tuning)."""
-    if one_step:
-        danger = one_step_predicted_fire(ship, q, threshold)
-    else:
-        danger = predicted_fire(ship, pos, button, q, threshold)
+def bot4_path(ship, pos, button, q, penalty=PENALTY):
+    """Bot 4: A* to the button, where each tile costs 1 + penalty * heat to
+    step on, and a burning tile costs BURNING_COST. Returns None if even the
+    cheapest path has to go through fire."""
+    heat = heat_map(ship, q)
     cost = []
     for r in range(ship.D):
         row = []
         for c in range(ship.D):
             if ship.grid[r][c].on_fire:
-                row.append(math.inf)
-            elif (r, c) in danger:
-                row.append(1.0 + penalty)
+                row.append(BURNING_COST)
             else:
-                row.append(1.0)
+                row.append(1 + penalty * heat[r][c])
         cost.append(row)
-    return a_star(ship, pos, button, cost)
+
+    path = a_star(ship, pos, button, cost)
+    if path is None:
+        return None
+    # BURNING_COST is bigger than any route that avoids the fire could ever
+    # cost, so if the cheapest path still steps on fire, every route to the
+    # button runs through fire: the bot is trapped.
+    for r, c in path:
+        if ship.grid[r][c].on_fire:
+            return None
+    return path

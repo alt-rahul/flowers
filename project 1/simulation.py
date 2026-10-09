@@ -2,7 +2,7 @@ import time
 
 import numpy as np
 
-from bots import PENALTY, THRESHOLD, bot1_path, bot2_path, bot3_path, bot4_path
+from bots import PENALTY, bot1_path, bot2_path, bot3_path, bot4_path
 from fire import spread_fire
 from search import distance_map, fireproof_path
 from ship import generate_ship
@@ -24,16 +24,15 @@ def setup_trial(D, seed):
 #this is the run bot method, this will run each of the bots in timesteps, if the bot reaches the same cell as the button then it wins
 # if the bot reachs the same tile as the fire than it fails - the fire spreads at each timestep
 # so the only the fire generation uses the random seeds not the the bots themselves so we can replicate the fire so each bot can experince the 
-#same fire generating pattern. Some of the parameters for this method such as threshold, penalty, and one_step are specifically for bot 4
-# which will be explained in a different file. This method returns a dictionary of information like whether the bot was successful, if it wasn't
+#same fire generating pattern. The penalty parameter is only for bot 4 (how much it pays for hot tiles),
+# which is explained in bots.py. This method returns a dictionary of information like whether the bot was successful, if it wasn't
 # what's the reason?, how many moves the bot made, the exact path the bot had taken, and a "deviations" variable where it counts the # of different 
 #steps that bot3 and bot4 took that were different from what bot 2 would've taken, because bot2 is BFS but avoids the fire, and bot3 and bot4 are
 #technically variations of the bot2 with more restrictions, we check if the bot3 and/or bot4 choose a cell that is further away from the button than
 #it's closest neighbor, if it does then we know that it choose a different path from basic BFS that avoids the fire, this is to check if the other 
 #vartions of bfs (bot3 and bot4) are actually any different from bot2. There is also a ms varible which counts the time the bot took. 
 
-def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed,
-            threshold=THRESHOLD, penalty=PENALTY, one_step=False):
+def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENALTY):
     #set ups the fire seed and assigns tiles with the respective object corrdinates to true - as if the tile at that location
     #is holding that object
     np.random.seed(fire_seed)
@@ -65,7 +64,7 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed,
         elif bot == 3:
             plan = bot3_path(ship, pos, button)
         else:
-            plan = bot4_path(ship, pos, button, q, threshold, penalty, one_step)
+            plan = bot4_path(ship, pos, button, q, penalty)
         think_time += time.perf_counter() - start 
 
         if plan is None:
