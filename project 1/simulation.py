@@ -9,8 +9,6 @@ from ship import generate_ship
 
 #this is the set up trial, meaning it will set up the "environment" for the us to run the bots
 def setup_trial(D, seed):
-    """A random ship, and three different random open tiles for the bot, the
-    button and the first fire. The same seed always gives the same trial."""
     ship = generate_ship(D, seed) #generates the ships
     cells = ship.open_cells() #as I mentinoed in the ship.py, this is where we get the list of all open shells
     np.random.shuffle(cells)   # put the open tiles in a random order and take the first three
@@ -75,32 +73,33 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
         else:
             next_pos = plan[1]
 
-        #this is the distance map 
+        #this is the distance map - also this is helpful because if the next position is not it's neighbor
+        #then it's a deviation from bot2 since bot2 always uses the shortest path - not the smartest/most cautious shortest path
         to_button = map_distance(ship, [button], ship.fire_cells())
         r, c = pos
         nr, nc = next_pos
         if to_button[nr][nc] != to_button[r][c] - 1:
             deviations += 1
 
-        # 2. The bot moves.
+        #actually moves the bot from one tile to another
         ship.tile(pos).has_bot = False
         pos = next_pos
         ship.tile(pos).has_bot = True
         path.append(pos)
-        if ship.tile(pos).on_fire:
+        if ship.tile(pos).on_fire: #checks if the bot is currently on a tile that has a fire
             reason = "entered_fire"
             break
-        if pos == button:
+        if pos == button: #checks if it's reached the goal node or the button
             reason = "success"
             break
 
-        # 3. The fire spreads.
+        # this actually spreads the fire - the fire should be spreading at every time step
         spread_fire(ship, q)
-        if ship.tile(pos).on_fire:
+        if ship.tile(pos).on_fire: #checks again if the current bot location caught on fire - if so then it's a fail
             reason = "caught"
             break
         if ship.tile(button).on_fire:
-            reason = "button_burned"   # nobody can press it any more
+            reason = "button_burned"   # button can't be reached if the cell is on fire - so it's another fail
             break
 
     return {

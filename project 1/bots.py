@@ -2,25 +2,23 @@ from search import a_star, bfs, map_distance
 from ship import check_neighbors
 
 # Bot 4's settings
-PENALTY = 10              # how much extra Bot 4 pays to step onto a tile with heat 1
-BURNING_COST = 1000000    # the cost of stepping onto a burning tile: so big that the bot never does
+PENALTY = 10              # how much extra "cost" bot4 pays to step onto a tile with heat of 1 
+BURNING_COST = 1000000    # the "cost" of trying to step onto a tile that is already on fire - very very expensive
 
 
+# this function builds the bot1 path, which is just a basic bfs 
 def bot1_path(ship, pos, button):
-    """Bot 1: the shortest path avoiding the fire. Bot 1 only calls this once,
-    at the start, when only the first fire tile is burning."""
     return bfs(ship, pos, button, ship.fire_cells())
 
-
+# this function also builds the bot2 path, which also just basic bfs, however it will get called on at every 
+# time step so the bot gets updated on the cells that are currently on fire.
 def bot2_path(ship, pos, button):
-    """Bot 2: the shortest path avoiding the tiles that are burning now.
-    Bot 2 calls this every step."""
     return bfs(ship, pos, button, ship.fire_cells())
 
-
+# very similar to bot2, however it has a set of cells that it wants to avoid, the cells that are neighbors
+# to cell that is currently on fire, it tries to calculate a path, however it is unsuccessful because of its
+# restrictions then it just falls back to the building a path like it was done in bot2.
 def bot3_path(ship, pos, button):
-    """Bot 3: the shortest path avoiding the fire and every tile next to it.
-    If there isn't one, it does what Bot 2 does."""
     fire = ship.fire_cells()
     avoid = set(fire)
     for r, c in fire:
@@ -32,36 +30,24 @@ def bot3_path(ship, pos, button):
     return path
 
 
-# ---------------------------------------------------------------- Bot 4 ----
-#
-# Bot 4 makes a "heat map" of the ship: the closer a tile is to the fire, the
-# hotter it is. Then it runs A* to the button, where hot tiles cost more to step
-# on. So the bot goes around the hot area when the way around isn't too long,
-# and goes through it when every other way is much longer.
-#
-# The heat of a tile is q ** (d - 1), where d is how many tiles the fire has to
-# travel to get there. A tile right next to the fire (d = 1) has heat 1, and
-# every tile further away multiplies the heat by q:
-#     q = 0.2:  1, 0.2, 0.04, 0.008, ...   (a slow fire: only the tiles next to it are hot)
-#     q = 0.8:  1, 0.8, 0.64, 0.51, ...    (a fast fire: tiles far away are hot too)
-#
-# Stepping onto a tile costs:
-#     BURNING_COST           if it is burning
-#     1 + PENALTY * heat     otherwise
-
-
+# bo4 is very intersting because it basically makes a "heat map" of the ship, where the closer a tile is to an existing fire, 
+# the "hotter" it is. Then the bot runs A* to the button, where hot tiles cost more to step
+# on or use in our path. so the bot tries to goes around the hotter cells when the way around isn't too long,
+# but ultimately decides to go through it when every other way is much longer (hence the manhattan distance)
+# the heat of each tile is based on the formula q ** (d - 1), where d is how many tiles the fire has to
+# travel to get there. a tile right next to the fire (d = 1) has heat 1, and every tile further away evnetually decays in cost
+# so steping ton a tile costs the BURNING_COST if you were to step on a fire cell (it's ridicously high because we never want to cell on a
+# fire cell), and 1 + PENATLTY * heat for any other cell
 def heat_map(ship, q):
-    """heat[r][c] = q ** (d - 1) for every open tile that isn't burning, where
-    d is the fire's distance to the tile. Walls and burning tiles get 0."""
-    fire_dist = map_distance(ship, ship.fire_cells(), set())   # d for every tile
-    heat = []
-    for r in range(ship.D):
+    fire_dist = map_distance(ship, ship.fire_cells(), set())   # calcualtes the dfor every tile
+    heat = [] 
+    for r in range(ship.D): # iterates through every cell
         row = []
         for c in range(ship.D):
             tile = ship.grid[r][c]
             if tile.is_open and not tile.on_fire:
                 d = fire_dist[r][c]
-                row.append(q ** (d - 1))
+                row.append(q ** (d - 1)) # calculates the heat value of the cell
             else:
                 row.append(0)
         heat.append(row)

@@ -41,11 +41,6 @@ def bfs(ship, start, goal, restricted):
 # infinity value that was first assigned to all cells) then a distance of 1 is added and the child is 
 #added to the queue as well, each new child takes the distance of the parent and adds another unit of distance (1). 
 def map_distance(ship, starts, restricted):
-    """dist[r][c] = the number of moves from the nearest tile in starts to
-    (r, c), never entering a restricted tile (math.inf if it can't be reached).
-
-    The same BFS with no goal: it runs until the fringe is empty. For the fire,
-    starts is every burning tile at once."""
     dist = []
     for row in range(ship.D): # goes through all the rows 
         dist.append([math.inf] * ship.D) # assigns infinity states to all columns in each row
