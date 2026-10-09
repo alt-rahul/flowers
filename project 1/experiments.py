@@ -5,11 +5,14 @@ import pandas as pd
 from simulation import run_bot, setup_trial
 
 # this file runs the bots on thousands of random trials and saves the results as csv files in the results folder,
-# you run it with "python experiments.py" and it takes a few hours since it runs one trial after another.
+# but it takes a few hours since it runs one trial after another (though I learn more about parallelization in python soon 
+# to make future projects faster - especially for a project related to inference)
 # trial number i always uses seed i for the ship and the starting cells, and seed FIRE_SEED + i for the fire,
 # so any trial can be made again exactly the same way, and every bot on a trial faces the exact same fire
 
-FIRE_SEED = 1000000   # added to the trial number to get the fire's seed, so the fire's seed is never the same as the ship's
+FIRE_SEED = 67   # added to the trial number to get the fire's seed, so the fire's seed is never the same as the ship's 
+#the seed also happens to be a specical number these days...something to ponder about
+
 # the columns of every results file, each row is one bot on one trial
 COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms"]
 
@@ -26,16 +29,17 @@ def run_trial(D, q, trial):
     return rows
 
 
-# this is the main experiment, it uses a 50 by 50 ship and tries every q from 0 to 1 in steps of 0.05.
-# the bots only really differ between q = 0.1 and 0.7 (the "interesting" range) so I run 1000 trials at each of
-# those q values to get a lot of data there, and 200 trials at every other q since all the bots do about the same there.
-# once it's done it saves every row in results/main.csv and also makes the two tables: the success rate of each
-# bot at every q, and how much better bot4 does than every other bot
+# this is the main part of the experiment, it uses a 50 by 50 ship and tries every q from 0 to 1 in steps of 0.05.
+# the bots mostly only differ between the ranges of q = 0.1 and 0.7 (the "interesting" range) so I ran 1000 trials at each of
+# those q values to get a lot of data there, and 200 trials at every other q since all the bots basicaly do the same thing
+# or display the same behaviors around those non-intersting values of q. 
+# once it's done it saves every row in a csv file and also makes the two tables: the success rate of each
+# bot at every q, and how much better bot4 does than every other bot (to measure the performance gains)
 def main_run():
     rows = []
     for i in range(21):
-        q = round(0.05 * i, 2)   # round so that q is exactly 0.05, 0.1, ... and not 0.15000000000000002
-        if q >= 0.1 and q <= 0.7:
+        q = round(0.05 * i, 2) 
+        if q >= 0.1 and q <= 0.7: #filtes for interesting q values
             trials = 1000
         else:
             trials = 200
@@ -44,18 +48,15 @@ def main_run():
             for row in run_trial(50, q, trial):
                 rows.append(row)
 
+    #for each respective data, it saves to 
     results = pd.DataFrame(rows, columns=COLUMNS)
     results.to_csv("results/main.csv", index=False)
 
     success = success_table(results)
     success.to_csv("results/success_by_q.csv", index=False)
-    print("\nSuccess rate (%) at each q:")
-    print(success.to_string(index=False))
 
     advantage = advantage_table(results)
     advantage.to_csv("results/bot4_advantage.csv", index=False)
-    print("\nBot 4 minus each other bot, same trials (points, 95% confidence):")
-    print(advantage.to_string(index=False))
 
 
 # makes a table with one row for each q and every bot's success rate (in %) at that q,
