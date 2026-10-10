@@ -28,10 +28,11 @@ def run_trial(D, q, trial):
 
 
 # this is the main part of the experiment, it uses a 50 by 50 ship and tries every q from 0 to 1 in steps of 0.05.
-# I ran 200 trials at every q, and since trial i is always the same ship, every q uses the exact same 200 ships
-# and starting cells, so the only thing that changes from one q to the next is how fast the fire spreads.
-# once it's done it saves every row in a csv file and also makes the two tables: the success rate of each
-# bot at every q, and how much better bot4 does than every other bot (to measure the performance gains)
+# this runs 200 trials at every q, and since trial i is always the same ship, every q uses the exact same 200 ships
+# and starting cells, so the only thing that changes from one q to the next is how fast the fire spreads (keeping this fair 
+# to compare performance between bots) once it's done it saves every row in a csv file and also makes the two tables
+# one is the tables is the success rate of each bot at every q, and the other table how much better bot4 does than 
+# every other bot (to measure the performance gains)
 def main_run():
     rows = []
     for i in range(21):
@@ -53,8 +54,9 @@ def main_run():
     advantage.to_csv("results/bot4_advantage.csv", index=False)
 
 
-# makes a table with one row for each q and every bot's success rate (in %) at that q,
-# a success is saved as 1 and a failure as 0 so the mean of the success column is the success rate
+# makes a table with one row for each q and every bot's success rate at that q,
+# a success is saved as 1 and a failure as 0 so the mean of the success column 
+# is technically the success rate
 def success_table(results):
     rows = []
     for q in sorted(results["q"].unique()):
@@ -89,7 +91,7 @@ def bot4_advantage(results, low_q, high_q, other):
 
 
 # the q ranges that are used in the advantage table: (name, lowest q, highest q)
-Q_RANGES = [
+ranges = [
     ("0.1 to 0.2", 0.1, 0.2),
     ("0.25 to 0.65", 0.25, 0.65),
     ("0.7 to 1", 0.7, 1.0),
@@ -100,7 +102,7 @@ Q_RANGES = [
 # makes the advantage table, one row for each q range, with how much better bot4 does than bot1, bot2 and bot3
 def advantage_table(results):
     rows = []
-    for name, low_q, high_q in Q_RANGES:
+    for name, low_q, high_q in ranges:
         row = [name]
         for other in ["bot1", "bot2", "bot3"]:
             mean = bot4_advantage(results, low_q, high_q, other)
@@ -111,7 +113,7 @@ def advantage_table(results):
 
 # the bots that are tried in the tuning run: (name, bot number, penalty), the penalty only matters for bot4,
 # bot2 and bot3 are there so we can see how the different bot4 penalties compare to them
-TUNING_BOTS = [
+bot_params_changed = [
     ("bot2", 2, 10),
     ("bot3", 3, 10),
     ("bot4 penalty=5", 4, 5),
@@ -121,11 +123,11 @@ TUNING_BOTS = [
 ]
 
 
-# same as run_trial but for the tuning run, it runs every bot in TUNING_BOTS on one trial and returns a row for each
+# same as run_trial but for the tuning run, it runs every bot in bot_params_changed on one trial and returns a row for each
 def run_tuning_trial(q, trial):
     ship, bot_start, button, fire_start = setup_trial(50, trial)
     rows = []
-    for name, bot, penalty in TUNING_BOTS:
+    for name, bot, penalty in bot_params_changed:
         result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial, penalty)
         rows.append([50, q, trial, name, int(result["success"]), result["reason"], result["steps"],
                      result["deviations"], round(result["ms"], 3)])
