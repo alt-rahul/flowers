@@ -3,7 +3,7 @@ import pandas as pd
 from simulation import run_bot, setup_trial
 
 # this file runs the bots on thousands of random trials and saves the results as csv files in the results folder,
-# but it takes a few hours since it runs one trial after another (though I learn more about parallelization in python soon 
+# but it takes a long time since it runs one trial after another (though I learn more about parallelization in python soon 
 # to make future projects faster - especially for a project related to inference)
 # trial number i always uses seed i for the ship and the starting cells, and seed FIRE_SEED + i for the fire,
 # so any trial can be made again exactly the same way, and every bot on a trial faces the exact same fire
@@ -15,7 +15,7 @@ FIRE_SEED = 67   # added to the trial number to get the fire's seed, so the fire
 COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "ms", "close_calls", "change_plan"]
 
 
-# turns the result of one run into one row of the results file (in the same order as COLUMNS)
+# turns the result of one run into one row of the results file
 def make_row(D, q, trial, name, result):
     return [D, q, trial, name, int(result["success"]), result["reason"], result["steps"],
             round(result["ms"], 3), result["close_calls"], result["change_plan"]]
@@ -83,7 +83,8 @@ def bot4_advantage(results, low_q, high_q, other):
     return 100 * (bot4_rate - other_rate)   # times 100 to turn it into percentage points
 
 
-# the q ranges that are used in the advantage table: (name, lowest q, highest q)
+# the q ranges that are used in the advantage table, where the the first element is the name
+# second is the lower threshold of q and the third is the higher threshold of q
 ranges = [
     ("0.1 to 0.2", 0.1, 0.2),
     ("0.25 to 0.65", 0.25, 0.65),
@@ -92,7 +93,7 @@ ranges = [
 ]
 
 
-# makes the advantage table, one row for each q range, with how much better bot4 does than bot1, bot2 and bot3
+# actually builds the advantage table, one row for each q range, with how much better bot4 does than bot1, bot2 and bot3
 def advantage_table(results):
     rows = []
     for name, low_q, high_q in ranges:
