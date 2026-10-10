@@ -15,8 +15,8 @@ Each file is one step, in the order things happen:
 | `search.py` | BFS and A* from the lecture pseudocode (`fringe`, `closed_set`, `prev`), plus `map_distance` (BFS distances to every tile). |
 | `bots.py` | One function per bot that returns the path it wants to take. Bot 4's heat map and its setting (`PENALTY`) are here too. |
 | `simulation.py` | `setup_trial` (one ship with three random tiles for the bot, the button and the first fire) and `run_bot` (one bot on one trial, one time step at a time). |
-| `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`, plus two tables: each bot's success rate at every q, and Bot 4's advantage over the other bots. |
-| `analysis.py` | Reads the saved results and draws the charts in `plots/` (and saves the numbers behind three of them as CSV files in `results/`). |
+| `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`, plus Tables 1 and 2 of the writeup: each bot's success rate at every q, and Bot 4's advantage over the other bots. |
+| `analysis.py` | Reads the saved results and draws the six charts in `plots/` that are in the writeup (and saves the numbers behind Figures 4, 5 and 6 as CSV files in `results/`). |
 | `tests/` | Checks for each step (`python -m pytest`). `tests/helpers.py` draws small ships by hand for them. |
 | `writeup.md` | The writeup, with its figures in `plots/`. |
 
@@ -29,7 +29,7 @@ tests). Run everything from this folder:
 cd "project 1"
 python -m pytest          # the tests
 python experiments.py     # all the experiments (over an hour)
-python analysis.py        # charts (plots/), a few seconds
+python analysis.py        # the six charts (plots/), a few seconds
 ```
 
 `experiments.py` runs one trial after another and writes the results
@@ -60,50 +60,53 @@ Every row of a results file is one bot on one trial:
 | `change_plan` | times the bot dropped its plan for a different route (always 0 for Bot 1) |
 
 - `results/main.csv`: the main run at D = 50: every q from 0 to 1 in steps of
-  0.05, with 200 trials at each q (the same 200 ships at every q).
-- `results/success_by_q.csv`: each bot's success rate (%) at every q.
-- `results/bot4_advantage.csv`: Bot 4's success rate minus each other bot's,
-  on the same trials, for low, middle and high q (in percentage points).
+  0.05, with 200 trials at each q (the same 200 ships at every q). Every table
+  and every chart except Figure 1 comes from this file.
 - `results/size.csv`: Bot 4 alone on smaller and bigger ships (D = 25 and
-  D = 100), 100 trials at each q from 0.1 to 0.8.
+  D = 100), 100 trials at each q from 0.1 to 0.8. It isn't in a table or a
+  chart, it only backs up the sentence in Section 2 of the writeup that the
+  results don't depend on the ship size.
 
-`analysis.py` also saves the numbers behind three of the charts, so the
-numbers in the writeup can be read straight off them:
+## The tables and charts in the writeup
 
-| File | What it has |
-|---|---|
-| `results/close_calls_by_q.csv` | close calls per 100 runs, for every bot at every q |
-| `results/change_plan_by_q.csv` | changes of mind per run, for Bots 2, 3 and 4 at every q |
-| `results/failure_reasons.csv` | why each bot failed, as a % of its failures over every q |
+| In the writeup | File | What it shows |
+|---|---|---|
+| Table 1 | `results/success_by_q.csv` | Each bot's success rate (%) at every q (the writeup shows every 0.1). Made by `experiments.py`. |
+| Table 2 | `results/bot4_advantage.csv` | Bot 4's success rate minus each other bot's, on the same trials, for low, middle and high q (in percentage points). Made by `experiments.py`. |
+| Figure 1 | `plots/heat_cost.png` | What a cell costs Bot 4 based on how far the fire has to travel to reach it, for q = 0.2, 0.5 and 0.8. It is drawn from the cost formula, so it doesn't need any results. |
+| Figure 2 | `plots/think_time.png` | How long each bot takes to decide one move, in milliseconds. |
+| Figure 3 | `plots/success_rate.png` | Each bot's success rate at every q (the same numbers as Table 1). |
+| Figure 4 | `plots/failure_reasons.png`, `results/failure_reasons.csv` | Why each bot fails, as a % of its failures over every q. |
+| Figure 5 | `plots/close_calls.png`, `results/close_calls_by_q.csv` | Close calls per 100 runs, for every bot at every q. |
+| Figure 6 | `plots/change_plan.png`, `results/change_plan_by_q.csv` | Changes of mind per run, for Bots 2, 3 and 4 at every q. |
 
-## The charts
-
-`analysis.py` saves these in `plots/`:
-
-| Chart | What it shows |
-|---|---|
-| `heat_cost.png` | What a cell costs Bot 4 based on how far the fire has to travel to reach it, for q = 0.2, 0.5 and 0.8 (Figure 1 in the writeup). |
-| `think_time.png` | How long each bot takes to decide one move (Figure 2). |
-| `success_rate.png` | Each bot's success rate at every q (Figure 3). |
-| `failure_reasons.png` | Why each bot fails (Figure 4). |
-| `close_calls.png` | Close calls per 100 runs (Figure 5). |
-| `change_plan.png` | Changes of mind per run (Figure 6). |
+The tables are made by `experiments.py` and the charts by `analysis.py`, and
+every number in the writeup can be read straight off these files.
 
 ## What the results show
 
-- Bot 4 is the best bot from q = 0.2 to 0.7. On the same trials it is
-  1.5 points ahead of Bot 2 and 0.8 points ahead of Bot 3 for q from 0.25 to
-  0.65, and 3 to 6 points ahead of Bot 1 for q from 0.15 to 0.4.
+- Bot 4 is the best bot from q = 0.2 to 0.7 (Tables 1 and 2, Figure 3). On
+  the same trials it is 1.5 points ahead of Bot 2 and 0.8 points ahead of Bot
+  3 for q from 0.25 to 0.65, and 3 to 6 points ahead of Bot 1 for q from 0.15
+  to 0.4.
 - For q from 0.8 to 1 it is about 2.5 points behind Bot 2. When the fire is
-  that fast, the heat spreads far, so Bot 4 takes detours that give the fire
-  time to cut it off.
-- From q = 0.6 up, thinking stops mattering: Bot 1, which never replans, has
-  exactly the same success rate as Bot 2, and at q = 1 all four bots win 53%
-  of the trials.
-- Bots 3 and 4 have far fewer close calls than Bots 1 and 2, and every
-  replanning bot changes its mind more as q grows.
-- Bot 4 does about the same on 25 by 25, 50 by 50 and 100 by 100 ships: a
-  bigger ship makes both the bot's path and the fire's path longer.
+  that fast, the longer routes Bot 4 takes around the heat give the fire time
+  to cut it off.
+- From q = 0.6 up, Bot 1, which never replans, has exactly the same success
+  rate as Bot 2, and at q = 1 all four bots win 53% of the trials (Table 1).
+- Bot 4 takes about 1.7 ms to decide a move, against 0.5 ms for Bots 2 and 3
+  (Figure 2).
+- Only Bot 1 ever walks into the fire (33% of its failures). The fire
+  spreading onto the bot is 19% of Bot 2's failures, but only 9% of Bot 3's
+  and 7% of Bot 4's (Figure 4).
+- Bots 3 and 4 have far fewer close calls than Bots 1 and 2: at q = 0.5,
+  16 per 100 runs for Bot 1 and 9.5 for Bot 2, against 2.5 for Bot 3 and 3.5
+  for Bot 4 (Figure 5).
+- Bots 2 and 3 change their mind more as q grows (Figure 6). Bot 4 changes
+  its mind more than Bot 2 in the middle range (0.65 times per run at
+  q = 0.4, against 0.43), dips at q = 0.9 and 0.95 (0.56 and 0.42), where the
+  heat barely fades so a longer route is rarely worth it, and goes back up to
+  0.98 at q = 1, where every cell costs the same.
 
 ## Differences from the original plan
 
