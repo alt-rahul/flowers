@@ -12,7 +12,8 @@ FIRE_SEED = 67   # added to the trial number to get the fire's seed, so the fire
 #the seed also happens to be a specical number these days...something to ponder about
 
 # the columns of every results file, each row is one bot on one trial
-COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms"]
+COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms",
+           "close_calls", "mind_changes", "victory_margin"]
 
 
 # this function runs all 4 bots on one trial (the same ship, the same starting cells and the same fire)
@@ -23,7 +24,8 @@ def run_trial(D, q, trial):
     for bot in [1, 2, 3, 4]:
         result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial)
         rows.append([D, q, trial, f"bot{bot}", int(result["success"]), result["reason"], result["steps"],
-                     result["deviations"], round(result["ms"], 3)])
+                     result["deviations"], round(result["ms"], 3),
+                     result["close_calls"], result["mind_changes"], result["victory_margin"]])
     return rows
 
 
@@ -130,7 +132,8 @@ def run_tuning_trial(q, trial):
     for name, bot, penalty in bot_params_changed:
         result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial, penalty)
         rows.append([50, q, trial, name, int(result["success"]), result["reason"], result["steps"],
-                     result["deviations"], round(result["ms"], 3)])
+                     result["deviations"], round(result["ms"], 3),
+                     result["close_calls"], result["mind_changes"], result["victory_margin"]])
     return rows
 
 
@@ -154,7 +157,8 @@ def run_size_trial(D, q, trial):
     ship, bot_start, button, fire_start = setup_trial(D, trial)
     result = run_bot(ship, bot_start, button, fire_start, q, 4, FIRE_SEED + trial)
     return [D, q, trial, "bot4", int(result["success"]), result["reason"], result["steps"],
-            result["deviations"], round(result["ms"], 3)]
+            result["deviations"], round(result["ms"], 3),
+                     result["close_calls"], result["mind_changes"], result["victory_margin"]]
 
 
 # this runs bot4 on a smaller ship (25 by 25) and a bigger ship (100 by 100) with 100 trials at each q
