@@ -63,9 +63,8 @@ def map_distance(ship, starts, restricted):
 def manhattan_distance(a, b):
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-# I think this A* algo is a bit different from what we learned from class
-# because not only does it just the heuristic of taking the manhattan distance of the current node to the button but it also 
-# considers a "cost" element of moving to a particular node - this is be elaborated on in a different file but essientally
+
+# this version of A* considers a "cost" element of moving to a particular node - this is be elaborated on in a different file but essientally
 # the closer a cell is to a exisiting fire cell, the more the costly it is to use that cell to reach the button, obvisouly A*
 # tries to find the goal node or the button with least cost since it is using a priority queue
 def a_star(ship, start, goal, cost):

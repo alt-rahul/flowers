@@ -43,9 +43,9 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
     path = [pos]
     plan = None #plan the list of corrdinates that the bot wants to go step by step, at the first index is the current position of the bot
     #the second index is the next position the bot will take, the plan gets recomputed at everytime step unless it's bot1
-    close_calls = 0 # placeholder
-    change_plan = 0 # placeholder
-    old_plan = None # placeholder
+    close_calls = 0 
+    change_plan = 0 
+    old_plan = None 
     think_time = 0.0 # this just measures the time the bot took
     max_steps = 2 * len(ship.open_cells())   #max number of timesteps, theortically shoudln't take more than 2x the # of cells that exist
     reason = "timeout"

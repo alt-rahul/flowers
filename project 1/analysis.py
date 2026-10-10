@@ -6,20 +6,15 @@ import pandas as pd
 from bots import PENALTY
 
 # this file draws the charts that are used in the writeup from the results that experiments.py saved,
-# you run it with "python analysis.py" once experiments.py is done. the charts get saved in the plots folder,
+# run this after you run experiments the charts get saved in the plots folder,
 # and the numbers behind the close calls, changes of mind and failure reasons charts get saved as csv files
 # in the results folder
 
 BOTS = ["bot1", "bot2", "bot3", "bot4"]
 NAMES = {"bot1": "Bot 1", "bot2": "Bot 2", "bot3": "Bot 3", "bot4": "Bot 4"}
-# each bot always has the same color in every chart so it's easy to follow a bot from one chart to the next,
-# these colors were picked so they're still easy to tell apart for someone who is colorblind
 COLORS = {"bot1": "#2a78d6", "bot2": "#eb6834", "bot3": "#1baf7a", "bot4": "#4a3aa7"}
-# the reasons a bot can fail, and the names that show up in the chart for them
 REASONS = ["entered_fire", "caught", "button_burned", "trapped"]
 REASON_LABELS = ["walked\ninto fire", "fire spread\nonto bot", "button\nburned first", "cut off\nfrom button"]
-# for the chart where the lines are different q values (not bots), the lines go from
-# light gray for the smallest q to black for the biggest q
 GRAYS = ["#9a9a9a", "#5c5c5c", "#1e1e1e"]
 
 
@@ -39,8 +34,7 @@ def average_by_q(results, bot, column, qs):
 
 # draws one line for every bot, with q along the bottom and the average of one column going up, every line
 # chart in the writeup is drawn by this one function so they all look the same. scale multiplies every value
-# (100 turns a success rate into a %, or a count per run into a count per 100 runs). it also returns the numbers
-# it drew as a table, one row for each q and one column for each bot
+#  it also returns the numbers it drew as a table, one row for each q and one column for each bot
 def line_chart(results, qs, bots, column, scale, ylabel, title, filename):
     table = pd.DataFrame({"q": qs})
     plt.figure(figsize=(8, 5))
@@ -59,11 +53,11 @@ def line_chart(results, qs, bots, column, scale, ylabel, title, filename):
     return table
 
 
-# shows how bot4's heat map works: how much it costs bot4 to step on a cell based on how far the fire has to
-# travel to get there (d), for a slow, a medium and a fast fire. the cost is 1 + PENALTY * q ** (d - 1),
-# and a cell that is far from the fire costs about 1 (the dashed line), same as a normal move
+# this function plots the cost of the heap map how much it costs bot4 to step on a cell based on how far the fire has to
+# travel to get there, for a slow, a medium and a fast fire. the cost is 1 + PENALTY * q ** (d - 1),
+# and a cell that is far from the fire costs about 1 (which is the dashed line), same as a normal move
 def plot_heat_cost():
-    distances = list(range(1, 11))   # d = 1 to 10
+    distances = list(range(1, 11))   
     qs = [0.2, 0.5, 0.8]
     plt.figure(figsize=(8, 5))
     for i in range(len(qs)):
@@ -84,7 +78,7 @@ def plot_heat_cost():
 
 
 # how long each bot takes to decide on one move, on average, which is the total time the bot spent
-# thinking divided by the total number of moves it made (bot1 only plans once so it barely thinks at all)
+# thinking divided by the total number of moves it made, bot1 only plans once so it barely thinks at all
 def plot_think_time(results):
     labels = []
     times = []
@@ -103,8 +97,8 @@ def plot_think_time(results):
     save_chart("think_time.png")
 
 
-# one small bar chart for each bot showing why it failed, as a % of all of that bot's failures (over every q),
-# it also returns those %s as a table, one row for each reason and one column for each bot
+# one small bar chart for each bot showing why it failed, as a percent of all of that bot's failures (over every q),
+# it also returns those percents as a table too 
 def plot_failure_reasons(results):
     table = pd.DataFrame({"reason": REASONS})
     plt.figure(figsize=(10, 7))
@@ -135,16 +129,18 @@ def main():
     plot_think_time(results)
     line_chart(results, qs, BOTS, "success", 100, "Success rate (%)", "Success rate vs flammability q",
                "success_rate.png")
+    
     close_calls = line_chart(results, qs, BOTS, "close_calls", 100, "Close calls per 100 runs",
                              "How often a bot ends a move right next to the fire", "close_calls.png")
     close_calls.to_csv("results/close_calls_by_q.csv", index=False)
-    # bot1 never plans again, so it never changes its mind and it's left out
+
+
     change_plan = line_chart(results, qs, ["bot2", "bot3", "bot4"], "change_plan", 1, "Changes of mind per run",
                              "How often a bot switches to a different route", "change_plan.png")
     change_plan.to_csv("results/change_plan_by_q.csv", index=False)
+
     failure_reasons = plot_failure_reasons(results)
     failure_reasons.to_csv("results/failure_reasons.csv", index=False)
-    print("Charts saved in plots/")
 
 
 if __name__ == "__main__":
