@@ -24,11 +24,10 @@ def setup_trial(D, seed):
 # so the only the fire generation uses the random seeds not the the bots themselves so we can replicate the fire so each bot can experince the 
 #same fire generating pattern. The penalty parameter is only for bot4 which tell penalizes cells that are closer to the fire.
 # which is explained in a different file. This method returns a dictionary of information like whether the bot was successful, if it wasn't
-# what's the reason?, how many moves the bot made, the exact path the bot had taken, and a "deviations" variable where it counts the # of different 
-#steps that bot3 and bot4 took that were different from what bot 2 would've taken, because bot2 is BFS but avoids the fire, and bot3 and bot4 are
-#technically variations of the bot2 with more restrictions, we check if the bot3 and/or bot4 choose a cell that is further away from the button than
-#it's closest neighbor, if it does then we know that it choose a different path from basic BFS that avoids the fire, this is to check if the other 
-#vartions of bfs (bot3 and bot4) are actually any different from bot2. There is also a ms varible which counts the time the bot took. 
+# what's the reason?, how many moves the bot made, the exact path the bot had taken, and a few other intersting variables, such as close calls, after the bot moves
+# if any neighbor of the bot new cell is burning then it counts as a close call, changes of mind meaning if the new plan isn't the same as the previous plan then that's
+#recorded as well, there also another one. There is also a ms varible which counts the time the bot took. 
+
 
 def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENALTY):
     #set ups the fire seed and assigns tiles with the respective object corrdinates to true - as if the tile at that location
@@ -47,7 +46,7 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
     #the second index is the next position the bot will take, the plan gets recomputed at everytime step unless it's bot1
     deviations = 0 
     close_calls = 0 # placeholder
-    mind_changes = 0 # placeholder
+    change_plan = 0 # placeholder
     victory_margin = None # placeholder
     old_plan = None # placeholder
     think_time = 0.0 # this just measures the time the bot took
@@ -69,9 +68,9 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
             plan = bot4_path(ship, pos, button, q, penalty)
         think_time += time.perf_counter() - start 
 
-        # placeholder
+        #this checks if bots 2-4 have changed their plan if so then it counts towards change plan 
         if bot != 1 and old_plan is not None and plan is not None and plan != old_plan[1:]:
-            mind_changes += 1
+            change_plan += 1
         old_plan = plan
 
         if plan is None:
@@ -82,14 +81,6 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
         else:
             next_pos = plan[1]
 
-        #this is the distance map - also this is helpful because if the next position is not the next cell to the button along the 
-        # a fire free shortest path then it's a deviation from bot2 since bot2 always uses the shortest path - not the smartest/most cautious shortest path
-        if bot != 2: # placeholder
-            to_button = map_distance(ship, [button], ship.fire_cells())
-            r, c = pos
-            nr, nc = next_pos
-            if to_button[nr][nc] != to_button[r][c] - 1:
-                deviations += 1
 
         #actually moves the bot from one tile to another
         ship.tile(pos).has_bot = False
@@ -99,16 +90,13 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
         if ship.tile(pos).on_fire: #checks if the bot is currently on a tile that has a fire
             reason = "entered_fire"
             break
-        # placeholder
+        #this checks of the close call, if the neighbor caught on fire then it's technically a close call
         for n in ship.neighbors(pos):
             if ship.tile(n).on_fire:
                 close_calls += 1
                 break
         if pos == button: #checks if it's reached the goal node or the button
             reason = "success"
-            # placeholder
-            fire_dist = map_distance(ship, ship.fire_cells(), set())
-            victory_margin = fire_dist[button[0]][button[1]]
             break
 
         # this actually spreads the fire - the fire should be spreading at every time step
@@ -128,6 +116,5 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
         "deviations": deviations,
         "ms": think_time * 1000,
         "close_calls": close_calls,
-        "mind_changes": mind_changes,
-        "victory_margin": victory_margin,
+        "change_plan": change_plan,
     }
