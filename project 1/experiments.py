@@ -16,6 +16,12 @@ COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations",
            "close_calls", "mind_changes", "victory_margin"]
 
 
+# turns the result of one run into one row of the results file (in the same order as COLUMNS)
+def make_row(D, q, trial, name, result):
+    return [D, q, trial, name, int(result["success"]), result["reason"], result["steps"], result["deviations"],
+            round(result["ms"], 3), result["close_calls"], result["mind_changes"], result["victory_margin"]]
+
+
 # this function runs all 4 bots on one trial (the same ship, the same starting cells and the same fire)
 # and returns one row of results for each bot
 def run_trial(D, q, trial):
@@ -23,9 +29,7 @@ def run_trial(D, q, trial):
     rows = []
     for bot in [1, 2, 3, 4]:
         result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial)
-        rows.append([D, q, trial, f"bot{bot}", int(result["success"]), result["reason"], result["steps"],
-                     result["deviations"], round(result["ms"], 3),
-                     result["close_calls"], result["mind_changes"], result["victory_margin"]])
+        rows.append(make_row(D, q, trial, f"bot{bot}", result))
     return rows
 
 
@@ -45,7 +49,7 @@ def main_run():
             for row in run_trial(50, q, trial):
                 rows.append(row)
 
-    #for each respective data, it saves to 
+    # saves every row to results/main.csv, then makes the two tables and saves them in the results folder too
     results = pd.DataFrame(rows, columns=COLUMNS)
     results.to_csv("results/main.csv", index=False)
 
@@ -60,36 +64,20 @@ def main_run():
 # a success is saved as 1 and a failure as 0 so the mean of the success column 
 # is technically the success rate
 def success_table(results):
-    rows = []
-    for q in sorted(results["q"].unique()):
-        row = [q]
-        for bot in ["bot1", "bot2", "bot3", "bot4"]:
-            successes = results[(results["q"] == q) & (results["bot"] == bot)]["success"]
-            row.append(round(100 * successes.mean(), 1))
-        rows.append(row)
-    return pd.DataFrame(rows, columns=["q", "Bot 1", "Bot 2", "Bot 3", "Bot 4"])
+    table = results.pivot_table(index="q", columns="bot", values="success")   # the mean success of every bot at every q
+    table = (100 * table).round(1)
+    table.columns = ["Bot 1", "Bot 2", "Bot 3", "Bot 4"]
+    return table.reset_index()
 
 
 # calculates how much better bot4 does than another bot for every q between low_q and high_q.
-# since both bots literally face the exact same fire on every single trial, it's safe to compare them trial by trial
-# each trial gives a value of either, 1, -1, or 0.
-# 1 (only the bot4 won), -1 (only the other bot won) or 0 (both either won or lost), and the mean of all of those
-# is how much better bot4 is
+# since both bots literally face the exact same fire on every single trial, it's safe to compare them directly:
+# bot4's success rate minus the other bot's success rate over the same trials is how much better bot4 is
 def bot4_advantage(results, low_q, high_q, other):
-    diffs = []
-    for q in sorted(results["q"].unique()):
-        if q < low_q or q > high_q:
-            continue
-        # sorting by the trial number lines up the two bots so the same index is the same trial
-        bot4 = results[(results["q"] == q) & (results["bot"] == "bot4")].sort_values("trial")
-        rival = results[(results["q"] == q) & (results["bot"] == other)].sort_values("trial")
-        bot4_success = list(bot4["success"])
-        rival_success = list(rival["success"])
-        for i in range(len(bot4_success)):
-            diffs.append(bot4_success[i] - rival_success[i])
-
-    mean = sum(diffs) / len(diffs)
-    return 100 * mean   # times 100 to turn it into percentage points
+    rows = results[(results["q"] >= low_q) & (results["q"] <= high_q)]
+    bot4_rate = rows[rows["bot"] == "bot4"]["success"].mean()
+    other_rate = rows[rows["bot"] == other]["success"].mean()
+    return 100 * (bot4_rate - other_rate)   # times 100 to turn it into percentage points
 
 
 # the q ranges that are used in the advantage table: (name, lowest q, highest q)
@@ -131,9 +119,7 @@ def run_tuning_trial(q, trial):
     rows = []
     for name, bot, penalty in bot_params_changed:
         result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial, penalty)
-        rows.append([50, q, trial, name, int(result["success"]), result["reason"], result["steps"],
-                     result["deviations"], round(result["ms"], 3),
-                     result["close_calls"], result["mind_changes"], result["victory_margin"]])
+        rows.append(make_row(50, q, trial, name, result))
     return rows
 
 
@@ -156,9 +142,7 @@ def tuning_run():
 def run_size_trial(D, q, trial):
     ship, bot_start, button, fire_start = setup_trial(D, trial)
     result = run_bot(ship, bot_start, button, fire_start, q, 4, FIRE_SEED + trial)
-    return [D, q, trial, "bot4", int(result["success"]), result["reason"], result["steps"],
-            result["deviations"], round(result["ms"], 3),
-                     result["close_calls"], result["mind_changes"], result["victory_margin"]]
+    return make_row(D, q, trial, "bot4", result)
 
 
 # this runs bot4 on a smaller ship (25 by 25) and a bigger ship (100 by 100) with 100 trials at each q

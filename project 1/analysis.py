@@ -5,75 +5,29 @@ import pandas as pd
 
 from bots import PENALTY
 
-# this file takes all the results that experiments.py saved and turns them into the charts and tables
+# this file takes all the results that experiments.py saved and turns them into the tables and charts
 # that are used in the writeup, you run it with "python analysis.py" once experiments.py is done.
-# the charts get saved in the plots folder and the tables get saved in results/summary.md
+# every table gets saved as a csv file in the results folder (so the numbers in the writeup can be read
+# straight off them) and every chart gets saved in the plots folder
 
-BOTS = ["bot1", "bot2", "bot3", "bot4"]
 NAMES = {"bot1": "Bot 1", "bot2": "Bot 2", "bot3": "Bot 3", "bot4": "Bot 4"}
 # each bot always has the same color in every chart so it's easy to follow a bot from one chart to the next,
 # these colors were picked so they're still easy to tell apart for someone who is colorblind
-COLORS = {"bot1": "#2a78d6", "bot2": "#eb6834", "bot3": "#1baf7a", "bot4": "#4a3aa7"}
+COLORS = {"Bot 1": "#2a78d6", "Bot 2": "#eb6834", "Bot 3": "#1baf7a", "Bot 4": "#4a3aa7"}
 # for the chart where the lines are different q values (not bots), the lines go from
 # light gray for the smallest q to black for the biggest q
 GRAYS = ["#9a9a9a", "#5c5c5c", "#1e1e1e"]
 
-report = []   # every line of results/summary.md, it gets written to the file at the very end
-
-
-# gets one column of the results (like "success") for one bot at one q, as a list sorted by the trial number
-# so that the same index in two lists is always the same trial (same ship and same fire)
-def column(results, q, bot, name):
-    rows = results[(results["q"] == q) & (results["bot"] == bot)]
-    rows = rows.sort_values("trial")
-    return list(rows[name])
-
-
-# calculates the mean (the average) of a list of numbers
-def mean(values):
-    return sum(values) / len(values)
-
-
-# the success rate of a bot at q (a success is 1 and a failure is 0, so the mean is the success rate)
-def success_rate(results, q, bot):
-    return mean(column(results, q, bot, "success"))
-
-
-# compares two bots on the exact same trials: for every trial, bot_a's result minus bot_b's result
-# gives 1 (only bot_a won), -1 (only bot_b won) or 0 (both won or both lost), the mean of that is
-# how much better bot_a did. this is much more exact than comparing two separate success rates
-def paired_difference(results, q, bot_a, bot_b):
-    a = column(results, q, bot_a, "success")
-    b = column(results, q, bot_b, "success")
-    diffs = []
-    for i in range(len(a)):
-        diffs.append(a[i] - b[i])
-    return mean(diffs)
-
-
-# the average of one column (like "close_calls") for one bot at one q. if only_wins is True it only uses
-# the trials the bot won, since the victory margin only exists when the bot wins
-def average(results, q, bot, name, only_wins=False):
-    rows = results[(results["q"] == q) & (results["bot"] == bot)]
-    if only_wins:
-        rows = rows[rows["success"] == 1]
-    return rows[name].mean()
-
-
-# every q uses the same 200 ships with the same fire seed, so for every ship we can find the lowest q where
-# the bot first loses it, which I call its "breaking point". a ship the bot never loses gets None
-def breaking_points(results, qs, bot):
-    points = {}   # trial -> breaking point
-    for trial in sorted(results["trial"].unique()):
-        points[trial] = None
-    for q in qs:   # qs goes from the smallest q to the biggest, so the first loss we find is the lowest q
-        rows = results[(results["q"] == q) & (results["bot"] == bot)]
-        trials = list(rows["trial"])
-        successes = list(rows["success"])
-        for i in range(len(trials)):
-            if successes[i] == 0 and points[trials[i]] is None:
-                points[trials[i]] = q
-    return points
+# the settings that were tried in the tuning run, the way they are named in results/tuning.csv, and the name
+# that shows up in the chart. bot4 with a penalty of 10 is the one I ended up using
+TUNING_LABELS = {
+    "bot2": "Bot 2",
+    "bot3": "Bot 3",
+    "bot4 penalty=5": "Bot 4\npenalty 5",
+    "bot4 penalty=10": "Bot 4\npenalty 10",
+    "bot4 penalty=20": "Bot 4\npenalty 20",
+    "bot4 penalty=30": "Bot 4\npenalty 30",
+}
 
 
 def save_chart(name):
@@ -81,23 +35,80 @@ def save_chart(name):
     plt.close()
 
 
+# ------------------------------------------------------------- tables ----
+
+# the average of one column (like "close_calls") for every bot at every q, as a table with
+# one row for each q and one column for each bot
+def by_q(results, column):
+    table = results.pivot_table(index="q", columns="bot", values=column)
+    table.columns = [NAMES[bot] for bot in table.columns]
+    return table
+
+
+# for every q: how many trials bot4 left bot2's rule (made at least one move bot2 couldn't have made) and won
+# while bot2 lost, and how many it left bot2's rule and lost while bot2 won. pivot puts one trial on each row
+# and one bot in each column, so the same row is the same ship with the same fire
+def detour_outcomes(results):
+    rows = []
+    for q in sorted(results["q"].unique()):
+        trials = results[results["q"] == q]
+        success = trials.pivot(index="trial", columns="bot", values="success")
+        left_rule = trials.pivot(index="trial", columns="bot", values="deviations") > 0
+        won = left_rule["bot4"] & (success["bot4"] == 1) & (success["bot2"] == 0)
+        lost = left_rule["bot4"] & (success["bot4"] == 0) & (success["bot2"] == 1)
+        rows.append([q, won.sum(), lost.sum()])
+    return pd.DataFrame(rows, columns=["q", "Bot 4 left the rule and won where Bot 2 lost",
+                                       "Bot 4 left the rule and lost where Bot 2 won"])
+
+
+# every q uses the same 200 ships with the same fire seed, so for every ship we can find the lowest q where
+# a bot first loses it, which I call its "breaking point". one row for each ship and one column for each bot,
+# and a ship the bot never loses is left empty
+def breaking_points(results):
+    losses = results[results["success"] == 0]
+    table = losses.pivot_table(index="trial", columns="bot", values="q", aggfunc="min")
+    table = table.reindex(sorted(results["trial"].unique()))   # adds back the ships no bot ever loses, as empty rows
+    table.columns = [NAMES[bot] for bot in table.columns]
+    return table
+
+
+# for every bot: how many ships it never loses at any q, and its average breaking point on the ships that every
+# bot loses at some q (using the same ships for every bot keeps it fair)
+def breaking_point_summary(points):
+    lost_by_all = points.dropna()   # dropna removes the ships that some bot never loses
+    rows = []
+    for name in points.columns:
+        rows.append([name, points[name].isna().sum(), round(lost_by_all[name].mean(), 3)])
+    return pd.DataFrame(rows, columns=["bot", "ships never lost",
+                                       f"average breaking point on the {len(lost_by_all)} ships every bot loses"])
+
+
+# for every q, the % of ships a bot has won at every q up to that one (it hasn't hit its breaking point yet)
+def unbeaten_by_q(points, qs):
+    table = pd.DataFrame(index=qs)
+    for name in points.columns:
+        values = []
+        for q in qs:
+            lost = (points[name] <= q).sum()   # ships already lost at this q or before (empty ones never count)
+            values.append(100 * (len(points) - lost) / len(points))
+        table[name] = values
+    return table
+
+
 # ------------------------------------------------------------- charts ----
 
-# the main chart: every bot's success rate at every q, all on the same axes so they're easy to compare
-def plot_success_rate(results, qs):
+# draws one line for every column of the table (one column per bot) with q along the bottom,
+# every line chart in the writeup is drawn by this one function so they all look the same
+def line_chart(table, ylabel, title, filename):
     plt.figure(figsize=(8, 5))
-    for bot in BOTS:
-        rates = []
-        for q in qs:
-            rate = success_rate(results, q, bot)
-            rates.append(100 * rate)
-        plt.plot(qs, rates, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
+    for name in table.columns:
+        plt.plot(table.index, table[name], marker="o", markersize=3, color=COLORS[name], label=name)
     plt.xlabel("Flammability q")
-    plt.ylabel("Success rate (%)")
-    plt.title("Success rate vs flammability q")
+    plt.ylabel(ylabel)
+    plt.title(title)
     plt.legend()
     plt.grid()
-    save_chart("success_rate.png")
+    save_chart(filename)
 
 
 # shows how bot4's heat map works: how much it costs bot4 to step on a cell based on how far the fire has to
@@ -124,281 +135,83 @@ def plot_heat_cost():
     save_chart("heat_cost.png")
 
 
-# how often bot3 and bot4 make at least one move that bot2's rule couldn't have made (a move that isn't
-# along a shortest path that avoids the fire), this is how we check if they really decide differently
-def plot_divergence(results, qs):
-    plt.figure(figsize=(8, 5))
-    for bot in ["bot3", "bot4"]:
-        shares = []
-        for q in qs:
-            deviations = column(results, q, bot, "deviations")
-            count = 0
-            for d in deviations:
-                if d > 0:
-                    count += 1
-            shares.append(100 * count / len(deviations))
-        plt.plot(qs, shares, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
-    plt.xlabel("Flammability q")
-    plt.ylabel("Trials (%)")
-    plt.title("How often a bot makes a move Bot 2 wouldn't")
-    plt.legend()
-    plt.grid()
-    save_chart("divergence.png")
-
-
-# how many moves per run a bot ends up right next to a burning cell, on average, at every q
-def plot_close_calls(results, qs):
-    plt.figure(figsize=(8, 5))
-    for bot in BOTS:
-        values = []
-        for q in qs:
-            values.append(average(results, q, bot, "close_calls"))
-        plt.plot(qs, values, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
-    plt.xlabel("Flammability q")
-    plt.ylabel("Close calls per run")
-    plt.title("How often a bot ends a move right next to the fire")
-    plt.legend()
-    plt.grid()
-    save_chart("close_calls.png")
-
-
-# how many times per run a bot throws away its plan for a different route, on average, at every q
-# (bot1 never plans again, so it's always 0 and it's left out)
-def plot_mind_changes(results, qs):
-    plt.figure(figsize=(8, 5))
-    for bot in ["bot2", "bot3", "bot4"]:
-        values = []
-        for q in qs:
-            values.append(average(results, q, bot, "mind_changes"))
-        plt.plot(qs, values, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
-    plt.xlabel("Flammability q")
-    plt.ylabel("Changes of mind per run")
-    plt.title("How often a bot switches to a different route")
-    plt.legend()
-    plt.grid()
-    save_chart("mind_changes.png")
-
-
-# when a bot wins, how many moves the fire still needed to reach the button, on average, at every q.
-# a small number means it was a narrow escape
-def plot_victory_margin(results, qs):
-    plt.figure(figsize=(8, 5))
-    for bot in BOTS:
-        values = []
-        for q in qs:
-            values.append(average(results, q, bot, "victory_margin", only_wins=True))
-        plt.plot(qs, values, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
-    plt.xlabel("Flammability q")
-    plt.ylabel("Moves the fire still needed to reach the button")
-    plt.title("How close the fire was when the button got pressed")
-    plt.legend()
-    plt.grid()
-    save_chart("victory_margin.png")
-
-
-# for every q, the % of ships a bot has won at every q up to that one (it hasn't hit its breaking point yet).
-# this line can only go down, and where it ends at q = 1 is the % of ships the bot never loses
-def plot_breaking_point(results, qs):
-    plt.figure(figsize=(8, 5))
-    for bot in BOTS:
-        points = breaking_points(results, qs, bot)
-        unbeaten = []
-        for q in qs:
-            count = 0
-            for trial in points:
-                if points[trial] is None or points[trial] > q:
-                    count += 1
-            unbeaten.append(100 * count / len(points))
-        plt.plot(qs, unbeaten, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
-    plt.xlabel("Flammability q")
-    plt.ylabel("Ships never lost up to this q (%)")
-    plt.title("How much fire a bot can handle on the same ship")
-    plt.legend()
-    plt.grid()
-    save_chart("breaking_point.png")
-
-
-# the bots that were tried in the tuning run, the way they are named in results/tuning.csv, and the name
-# that shows up in the chart. bot4 with a penalty of 10 is the one I ended up using
-TUNING_CHOSEN = "bot4 penalty=10"
-TUNING_LABELS = [
-    ("bot2", "Bot 2"),
-    ("bot3", "Bot 3"),
-    ("bot4 penalty=5", "Bot 4\npenalty 5"),
-    ("bot4 penalty=10", "Bot 4\npenalty 10"),
-    ("bot4 penalty=20", "Bot 4\npenalty 20"),
-    ("bot4 penalty=30", "Bot 4\npenalty 30"),
-]
-
-
 # the success rate of every setting in the tuning run (800 trials that the main run never uses),
 # bot2 and bot3 are there so we can compare against them
-def plot_tuning(tuning):
+def plot_tuning(overall):
     labels = []
-    rates = []
     colors = []
-    for bot, label in TUNING_LABELS:
-        rows = tuning[tuning["bot"] == bot]
-        labels.append(label)
-        rates.append(100 * rows["success"].mean())
-        colors.append(COLORS[bot[:4]])   # the first 4 letters are the bot's name, like "bot4"
+    for name in overall.index:
+        labels.append(TUNING_LABELS[name])
+        colors.append(COLORS[NAMES[name[:4]]])   # the first 4 letters are the bot's name, like "bot4"
     plt.figure(figsize=(8, 5))
-    plt.bar(labels, rates, color=colors)
-    for i in range(len(rates)):
-        plt.text(i, rates[i], f"{rates[i]:.1f}%", ha="center", va="bottom")   # the number on top of each bar
+    plt.bar(labels, overall, color=colors)
+    for i in range(len(overall)):
+        plt.text(i, overall.iloc[i], f"{overall.iloc[i]:.1f}%", ha="center", va="bottom")   # the number on top of each bar
     plt.ylim(0, 100)
     plt.ylabel("Success rate (%)")
     plt.title("Tuning Bot 4's penalty on 800 separate trials")
     save_chart("tuning.png")
 
 
-# ------------------------------------------------------------- tables ----
-
-# every bot's success rate at every q
-def table_success_rates(results, qs):
-    report.append("## Success rate (%)\n")
-    report.append("| q | Bot 1 | Bot 2 | Bot 3 | Bot 4 |")
-    report.append("|---|---|---|---|---|")
-    for q in qs:
-        line = f"| {q:g} |"
-        for bot in BOTS:
-            rate = success_rate(results, q, bot)
-            line += f" {100 * rate:.1f}% |"
-        report.append(line)
-
-
-# bot4's success rate minus every other bot's on the same trials, at every q
-def table_differences(results, qs):
-    report.append("\n## Bot 4 minus each other bot, same trials (percentage points)\n")
-    report.append("| q | vs Bot 1 | vs Bot 2 | vs Bot 3 |")
-    report.append("|---|---|---|---|")
-    for q in qs:
-        line = f"| {q:g} |"
-        for bot in ["bot1", "bot2", "bot3"]:
-            diff = paired_difference(results, q, "bot4", bot)
-            line += f" {100 * diff:+.1f} |"
-        report.append(line)
-
-
-# splits the trials by whether bot3 or bot4 ever made a move bot2's rule couldn't have made, and for each
-# group counts the trials it won where bot2 lost and the trials it lost where bot2 won
-def table_divergence(results, qs):
-    report.append("\n## Outcomes against Bot 2, split by whether the bot ever left Bot 2's rule\n")
-    report.append("| Bot | Left Bot 2's rule? | Trials | Won where Bot 2 lost | Lost where Bot 2 won |")
-    report.append("|---|---|---|---|---|")
-    for bot in ["bot3", "bot4"]:
-        for left in [True, False]:
-            count = 0
-            won = 0
-            lost = 0
-            for q in qs:
-                deviations = column(results, q, bot, "deviations")
-                success = column(results, q, bot, "success")
-                bot2_success = column(results, q, "bot2", "success")
-                for i in range(len(deviations)):
-                    if (deviations[i] > 0) != left:
-                        continue
-                    count += 1
-                    if success[i] == 1 and bot2_success[i] == 0:
-                        won += 1
-                    if bot2_success[i] == 1 and success[i] == 0:
-                        lost += 1
-            if left:
-                answer = "yes"
-            else:
-                answer = "no"
-            report.append(f"| {NAMES[bot]} | {answer} | {count} | {won} | {lost} |")
-
-
-# the new metrics for every bot at every 0.1 of q: close calls per run, changes of mind per run and the
-# victory margin, all as one dataframe that also gets saved to results/new_metrics.csv
-def new_metrics_table(results, qs):
-    rows = []
-    for q in qs:
-        for bot in BOTS:
-            rows.append([q, NAMES[bot], round(100 * success_rate(results, q, bot), 1),
-                         round(average(results, q, bot, "close_calls"), 2),
-                         round(average(results, q, bot, "mind_changes"), 2),
-                         round(average(results, q, bot, "victory_margin", only_wins=True), 1)])
-    return pd.DataFrame(rows, columns=["q", "bot", "success rate (%)", "close calls per run",
-                                       "changes of mind per run", "victory margin (moves)"])
-
-
-# for every bot: how many ships it never loses at any q, and the average breaking point of the ships it does lose
-def breaking_point_table(results, qs):
-    rows = []
-    for bot in BOTS:
-        points = breaking_points(results, qs, bot)
-        lost = []
-        never = 0
-        for trial in points:
-            if points[trial] is None:
-                never += 1
-            else:
-                lost.append(points[trial])
-        rows.append([NAMES[bot], never, len(lost), round(mean(lost), 2)])
-    return pd.DataFrame(rows, columns=["bot", "ships never lost", "ships lost at some q", "average breaking point q"])
-
-
-# every tuning setting's success rate minus the chosen bot4's (penalty 10) over all the tuning trials
-def tuning_difference(tuning, bot):
-    diffs = []
-    for q in sorted(tuning["q"].unique()):
-        a = column(tuning, q, bot, "success")
-        b = column(tuning, q, TUNING_CHOSEN, "success")
-        for i in range(len(a)):
-            diffs.append(a[i] - b[i])
-    return 100 * mean(diffs)
-
-
-# the tuning results as a table: every setting's success rate and how far it is from the chosen bot4
-def table_tuning(tuning):
-    report.append("\n## Bot 4 tuning (800 separate trials)\n")
-    report.append("| Bot | Success | Minus the chosen Bot 4 (points) |")
-    report.append("|---|---|---|")
-    for bot, label in TUNING_LABELS:
-        rows = tuning[tuning["bot"] == bot]
-        difference = tuning_difference(tuning, bot)
-        label = label.replace("\n", " ")
-        report.append(f"| {label} | {100 * rows['success'].mean():.2f}% | {difference:+.2f} |")
-
-
-# reads the results, makes every chart and every table, and saves the tables in results/summary.md
-# and the two new dataframes in results/new_metrics.csv and results/breaking_point.csv
+# reads the results, makes every table (saved as csv files) and draws every chart from those tables
 def main():
     results = pd.read_csv("results/main.csv")
     tuning = pd.read_csv("results/tuning.csv")
+    size = pd.read_csv("results/size.csv")
     qs = sorted(results["q"].unique())
 
-    plot_success_rate(results, qs)
+    # success rate (%) of every bot at every q (experiments.py already saved it as results/success_by_q.csv)
+    success = 100 * by_q(results, "success")
+
+    # deviations: the % of trials at each q where a bot left bot2's rule at least once
+    results["left_rule"] = results["deviations"] > 0
+    left_rule = (100 * by_q(results, "left_rule")).round(1)[["Bot 3", "Bot 4"]]
+    left_rule.to_csv("results/deviations_by_q.csv")
+    detour_outcomes(results).to_csv("results/bot4_detour_outcomes.csv", index=False)
+
+    # the three things counted during every run (close calls per 100 runs, since they are rare)
+    close_calls = (100 * by_q(results, "close_calls")).round(1)
+    mind_changes = by_q(results, "mind_changes").round(2)[["Bot 2", "Bot 3", "Bot 4"]]   # bot1 is always 0
+    victory_margin = by_q(results[results["success"] == 1], "victory_margin").round(1)   # only the wins
+    close_calls.to_csv("results/close_calls_by_q.csv")
+    mind_changes.to_csv("results/mind_changes_by_q.csv")
+    victory_margin.to_csv("results/victory_margin_by_q.csv")
+
+    # breaking points
+    points = breaking_points(results)
+    points.to_csv("results/breaking_point_by_ship.csv")
+    breaking_point_summary(points).to_csv("results/breaking_point_summary.csv", index=False)
+    unbeaten = unbeaten_by_q(points, qs)
+
+    # time to decide one move (ms), the total thinking time divided by the total number of moves
+    think_time = (results.groupby("bot")["ms"].sum() / results.groupby("bot")["steps"].sum()).round(2)
+    think_time.to_csv("results/think_time.csv", header=["ms per move"])
+
+    # tuning: the success rate (%) of every setting at every q, and over all of the tuning trials
+    tuning_table = (100 * tuning.pivot_table(index="bot", columns="q", values="success")).round(1)
+    tuning_table["all q"] = (100 * tuning.groupby("bot")["success"].mean()).round(2)
+    tuning_table = tuning_table.reindex(list(TUNING_LABELS))   # puts the settings in the order of TUNING_LABELS
+    tuning_table.to_csv("results/tuning_by_q.csv")
+
+    # ship size: bot4's success rate (%) at each q on the 25, 50 and 100 ships
+    size_table = (100 * size.pivot_table(index="q", columns="D", values="success")).round(1)
+    size_table[50] = success["Bot 4"]   # the 50 by 50 ship comes from the main run
+    size_table = size_table[[25, 50, 100]]
+    size_table.to_csv("results/size_by_q.csv")
+
+    line_chart(success, "Success rate (%)", "Success rate vs flammability q", "success_rate.png")
     plot_heat_cost()
-    plot_divergence(results, qs)
-    plot_close_calls(results, qs)
-    plot_mind_changes(results, qs)
-    plot_victory_margin(results, qs)
-    plot_breaking_point(results, qs)
-    plot_tuning(tuning)
-
-    new_metrics = new_metrics_table(results, qs)
-    new_metrics.to_csv("results/new_metrics.csv", index=False)
-    breaking = breaking_point_table(results, qs)
-    breaking.to_csv("results/breaking_point.csv", index=False)
-
-    report.append("# Results\n")
-    report.append(f"Main run: D = 50, {len(results) // 4} trials (results/main.csv).\n")
-    table_success_rates(results, qs)
-    table_differences(results, qs)
-    table_divergence(results, qs)
-    report.append("\n## New metrics (every q, also in results/new_metrics.csv)\n")
-    report.append("```\n" + new_metrics.to_string(index=False) + "\n```")
-    report.append("\n## Breaking point (also in results/breaking_point.csv)\n")
-    report.append("```\n" + breaking.to_string(index=False) + "\n```")
-    table_tuning(tuning)
-
-    with open("results/summary.md", "w") as f:
-        f.write("\n".join(report) + "\n")
-    print("\n".join(report))
-    print("\nCharts saved in plots/, tables in results/summary.md")
+    line_chart(left_rule, "Trials (%)", "How often a bot makes a move Bot 2 wouldn't", "divergence.png")
+    line_chart(close_calls, "Close calls per 100 runs", "How often a bot ends a move right next to the fire",
+               "close_calls.png")
+    line_chart(mind_changes, "Changes of mind per run", "How often a bot switches to a different route",
+               "mind_changes.png")
+    line_chart(victory_margin, "Moves the fire still needed to reach the button",
+               "How close the fire was when the button got pressed", "victory_margin.png")
+    line_chart(unbeaten, "Ships never lost up to this q (%)", "How much fire a bot can handle on the same ship",
+               "breaking_point.png")
+    plot_tuning(tuning_table["all q"])
+    print("Tables saved in results/, charts saved in plots/")
 
 
 if __name__ == "__main__":
