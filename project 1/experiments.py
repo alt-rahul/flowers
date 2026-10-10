@@ -63,10 +63,14 @@ def main_run():
 # a success is saved as 1 and a failure as 0 so the mean of the success column 
 # is technically the success rate
 def success_table(results):
-    table = results.pivot_table(index="q", columns="bot", values="success")   # the mean success of every bot at every q
-    table = (100 * table).round(1)
-    table.columns = ["Bot 1", "Bot 2", "Bot 3", "Bot 4"]
-    return table.reset_index()
+    rows = []
+    for q in sorted(results["q"].unique()):
+        row = [q]
+        for bot in ["bot1", "bot2", "bot3", "bot4"]:
+            successes = results[(results["q"] == q) & (results["bot"] == bot)]["success"]
+            row.append(round(100 * successes.mean(), 1))
+        rows.append(row)
+    return pd.DataFrame(rows, columns=["q", "Bot 1", "Bot 2", "Bot 3", "Bot 4"])
 
 
 # calculates how much better bot4 does than another bot for every q between low_q and high_q.
@@ -100,43 +104,6 @@ def advantage_table(results):
     return pd.DataFrame(rows, columns=["q range", "vs Bot 1", "vs Bot 2", "vs Bot 3"])
 
 
-# the bots that are tried in the tuning run: (name, bot number, penalty), the penalty only matters for bot4,
-# bot2 and bot3 are there so we can see how the different bot4 penalties compare to them
-bot_params_changed = [
-    ("bot2", 2, 10),
-    ("bot3", 3, 10),
-    ("bot4 penalty=5", 4, 5),
-    ("bot4 penalty=10", 4, 10),
-    ("bot4 penalty=20", 4, 20),
-    ("bot4 penalty=30", 4, 30),
-]
-
-
-# same as run_trial but for the tuning run, it runs every bot in bot_params_changed on one trial and returns a row for each
-def run_tuning_trial(q, trial):
-    ship, bot_start, button, fire_start = setup_trial(50, trial)
-    rows = []
-    for name, bot, penalty in bot_params_changed:
-        result = run_bot(ship, bot_start, button, fire_start, q, bot, FIRE_SEED + trial, penalty)
-        rows.append(make_row(50, q, trial, name, result))
-    return rows
-
-
-# this is how I picked bot4's penalty, it tries different penalties on trials 5000 to 5199, which the main run
-# never uses, so picking the penalty didn't use the main results at all (otherwise the main results would be
-# a bit biased towards bot4). the q values go up to 0.8 because a big penalty can hurt when the fire is fast
-def tuning_run():
-    rows = []
-    for q in [0.2, 0.4, 0.6, 0.8]:
-        print(f"Tuning run: q = {q}, 200 trials")
-        for trial in range(5000, 5200):
-            for row in run_tuning_trial(q, trial):
-                rows.append(row)
-
-    results = pd.DataFrame(rows, columns=COLUMNS)
-    results.to_csv("results/tuning.csv", index=False)
-
-
 # runs only bot4 on one trial with a ship of size D and returns its row
 def run_size_trial(D, q, trial):
     ship, bot_start, button, fire_start = setup_trial(D, trial)
@@ -158,10 +125,9 @@ def size_run():
     results.to_csv("results/size.csv", index=False)
 
 
-# runs all three experiments one after another
+# runs both experiments one after another
 def main():
     main_run()
-    tuning_run()
     size_run()
     print("Finished succssfuly!")
 

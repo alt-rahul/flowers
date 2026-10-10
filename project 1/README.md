@@ -16,7 +16,7 @@ Each file is one step, in the order things happen:
 | `bots.py` | One function per bot that returns the path it wants to take. Bot 4's heat map and its setting (`PENALTY`) are here too. |
 | `simulation.py` | `setup_trial` (one ship with three random tiles for the bot, the button and the first fire) and `run_bot` (one bot on one trial, one time step at a time). |
 | `experiments.py` | Runs every bot on thousands of trials and saves one row per (trial, bot) in `results/`, plus two tables: each bot's success rate at every q, and Bot 4's advantage over the other bots. |
-| `analysis.py` | Reads the saved results, saves the tables used in the writeup as CSV files in `results/`, and draws the charts in `plots/` from them. |
+| `analysis.py` | Reads the saved results and draws the charts in `plots/` (and saves the numbers behind three of them as CSV files in `results/`). |
 | `tests/` | Checks for each step (`python -m pytest`). `tests/helpers.py` draws small ships by hand for them. |
 | `writeup.md` | The writeup, with its figures in `plots/`. |
 
@@ -28,8 +28,8 @@ tests). Run everything from this folder:
 ```bash
 cd "project 1"
 python -m pytest          # the tests
-python experiments.py     # all the experiments (about an hour and a half)
-python analysis.py        # tables (results/*.csv) and charts (plots/), a few seconds
+python experiments.py     # all the experiments (over an hour)
+python analysis.py        # charts (plots/), a few seconds
 ```
 
 `experiments.py` runs one trial after another and writes the results
@@ -51,7 +51,7 @@ Every row of a results file is one bot on one trial:
 | Column | Meaning |
 |---|---|
 | `D`, `q`, `trial` | which trial (ship size, flammability, trial number); together they make the trial again exactly |
-| `bot` | `bot1` to `bot4` (in the tuning file, also the Bot 4 settings tried) |
+| `bot` | `bot1` to `bot4` |
 | `success` | 1 if the button was pressed |
 | `reason` | `success`, `entered_fire`, `caught`, `button_burned` or `trapped` (cut off from the button) |
 | `steps` | how many moves the bot made |
@@ -64,24 +64,17 @@ Every row of a results file is one bot on one trial:
 - `results/success_by_q.csv`: each bot's success rate (%) at every q.
 - `results/bot4_advantage.csv`: Bot 4's success rate minus each other bot's,
   on the same trials, for low, middle and high q (in percentage points).
-- `results/tuning.csv`: Bot 2, Bot 3 and different Bot 4 penalties on 800
-  separate trials (q = 0.2, 0.4, 0.6 and 0.8, trial numbers 5000 to 5199,
-  which the main run never uses).
 - `results/size.csv`: Bot 4 alone on smaller and bigger ships (D = 25 and
   D = 100), 100 trials at each q from 0.1 to 0.8.
 
-`analysis.py` makes these tables from them (each one is a plain CSV, so every
-number in the writeup can be read straight off it):
+`analysis.py` also saves the numbers behind three of the charts, so the
+numbers in the writeup can be read straight off them:
 
 | File | What it has |
 |---|---|
 | `results/close_calls_by_q.csv` | close calls per 100 runs, for every bot at every q |
 | `results/change_plan_by_q.csv` | changes of mind per run, for Bots 2, 3 and 4 at every q |
-| `results/breaking_point_by_ship.csv` | for every ship, the lowest q at which each bot first loses it (empty if it never does) |
-| `results/breaking_point_summary.csv` | ships each bot never loses, and its average breaking point on the ships every bot loses |
-| `results/think_time.csv` | how long each bot takes to decide one move (ms) |
-| `results/tuning_by_q.csv` | the success rate (%) of every tuning setting at every q and overall |
-| `results/size_by_q.csv` | Bot 4's success rate (%) on 25, 50 and 100 ships |
+| `results/failure_reasons.csv` | why each bot failed, as a % of its failures over every q |
 
 ## The charts
 
@@ -90,11 +83,11 @@ number in the writeup can be read straight off it):
 | Chart | What it shows |
 |---|---|
 | `heat_cost.png` | What a cell costs Bot 4 based on how far the fire has to travel to reach it, for q = 0.2, 0.5 and 0.8 (Figure 1 in the writeup). |
-| `success_rate.png` | Each bot's success rate at every q (Figure 2). |
-| `breaking_point.png` | The % of ships a bot hasn't lost yet at any q up to each q (Figure 3). |
-| `close_calls.png` | Close calls per 100 runs (Figure 4). |
-| `change_plan.png` | Changes of mind per run (Figure 5). |
-| `tuning.png` | The success rate of every setting in the tuning run (Figure 6). |
+| `think_time.png` | How long each bot takes to decide one move (Figure 2). |
+| `success_rate.png` | Each bot's success rate at every q (Figure 3). |
+| `failure_reasons.png` | Why each bot fails (Figure 4). |
+| `close_calls.png` | Close calls per 100 runs (Figure 5). |
+| `change_plan.png` | Changes of mind per run (Figure 6). |
 
 ## What the results show
 
@@ -109,10 +102,6 @@ number in the writeup can be read straight off it):
   of the trials.
 - Bots 3 and 4 have far fewer close calls than Bots 1 and 2, and every
   replanning bot changes its mind more as q grows.
-- Bot 4 holds out to the highest q on the 94 ships every bot eventually loses,
-  but it is the only bot that loses 5 ships the others never lose.
-- In tuning, penalties 5, 10, 20 and 30 all did about the same, so `PENALTY`
-  stays at 10.
 - Bot 4 does about the same on 25 by 25, 50 by 50 and 100 by 100 ships: a
   bigger ship makes both the bot's path and the fire's path longer.
 
