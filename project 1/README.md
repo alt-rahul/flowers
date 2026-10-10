@@ -62,7 +62,7 @@ Every row of a results file is one bot on one trial:
   0.05, with 200 trials at each q (the same 200 ships at every q).
 - `results/success_by_q.csv`: each bot's success rate (%) at every q.
 - `results/bot4_advantage.csv`: Bot 4's success rate minus each other bot's,
-  on the same trials, for low, middle and high q (points, 95% confidence).
+  on the same trials, for low, middle and high q (in percentage points).
 - `results/tuning.csv`: Bot 2, Bot 3 and different Bot 4 penalties on 800
   separate trials (q = 0.2, 0.4, 0.6 and 0.8, trial numbers 5000 to 5199,
   which the main run never uses).

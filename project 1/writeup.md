@@ -121,10 +121,9 @@ separately (Figure 6). I tried every $q$ from 0 to 1 in steps of 0.05, with 200
 trials at each one: 4,200 trials, with all four bots on every one. Trial $i$
 always uses seed $i$ for the ship and the starting cells, so every $q$ uses the
 same 200 ships, and the only thing that changes from one $q$ to the next is how
-fast the fire spreads. One success rate from 200 trials is only known to about
-$\pm 5.5$ points, but since the bots face the same fire I can compare them trial
-by trial, which is much more exact: at $q = 0.4$ the gap between Bot 4 and Bot 2
-is known to $\pm 2$ points instead of $\pm 7.4$.
+fast the fire spreads. Since the bots face the same fire on every trial, I
+compare them trial by trial, so a difference between two bots comes from their
+decisions and not from one of them getting an easier fire.
 
 ![Figure 3](plots/success_rate.png)
 
@@ -163,33 +162,33 @@ the fire started 21 to 30 moves closer to the button than the bot did.
 Since every bot faces the same fire, the simplest way to compare Bot 4 with Bot
 2 is to count the trials that only one of them won (Figure 5). For $q$ from 0.2
 to 0.7, Bot 4 won 36 trials that Bot 2 lost and lost only 4 that Bot 2 won.
-Table 2 turns this into the difference in success rate on the same trials, with
-95% confidence intervals.
+Table 2 turns this into the difference in success rate on the same trials.
 
 ![Figure 5](plots/bot4_vs_bot2.png)
 
 *Figure 5: At each $q$, the share of trials that Bot 4 won and Bot 2 lost, and the share that Bot 2 won and Bot 4 lost (on the same ship with the same fire). The Bot 4 line is above the Bot 2 line at every $q$ from 0.2 to 0.7 except 0.6 (a tie), so that is where Bot 4 does better. From 0.75 up it is the other way around, and the reason is explained in Section 3.*
 
-*Table 2: Bot 4's success rate minus each other bot's on the same trials, in points, with 95% confidence intervals.*
+*Table 2: Bot 4's success rate minus each other bot's on the same trials, in percentage points.*
 
 | $q$ range | vs Bot 1 | vs Bot 2 | vs Bot 3 |
 |---|---|---|---|
-| 0.1 to 0.2 | +3.0 ± 1.4 | +0.3 ± 0.7 | +0.0 ± 0.5 |
-| 0.25 to 0.65 | +3.1 ± 0.8 | +1.5 ± 0.6 | +0.8 ± 0.5 |
-| 0.7 to 1 | −1.7 ± 0.8 | −1.7 ± 0.8 | −1.5 ± 0.8 |
-| all $q$ | +1.3 ± 0.5 | +0.1 ± 0.4 | −0.1 ± 0.3 |
+| 0.1 to 0.2 | +3.0 | +0.3 | +0.0 |
+| 0.25 to 0.65 | +3.1 | +1.5 | +0.8 |
+| 0.7 to 1 | −1.7 | −1.7 | −1.5 |
+| all $q$ | +1.3 | +0.1 | −0.1 |
 
 So there, between $q = 0.2$ and 0.7, is where Bot 4 outperforms the other three.
 It is ahead of or tied with Bots 2 and 3 at every $q$ in that range, and its
-biggest lead is 2.5 points over Bot 2 at $q = 0.35$. With 200 trials, the gap at
-a single $q$ is only known to about $\pm 2$ points, so the clearest evidence is
-the middle range as a whole: from $q = 0.25$ to 0.65, Bot 4 is $1.5 \pm 0.6$
-points ahead of Bot 2 and $0.8 \pm 0.5$ ahead of Bot 3, which is more than the
-noise. It is also 3 to 6 points ahead of Bot 1 for $q$ from 0.15 to 0.4. For $q$
-up to 0.15 there is no real difference between Bots 2, 3 and 4, and when the
-fire is very fast Bot 4 does worse: for $q$ from 0.8 to 1 it is $2.5 \pm 1.0$
-points behind Bot 2 (Section 3 explains why). Over all $q$ the gains and losses
-cancel out, which is why the "all $q$" row is close to zero.
+biggest lead is 2.5 points over Bot 2 at $q = 0.35$. With only 200 trials, a gap
+of 1 or 2 points at a single $q$ could just be luck, so the clearest evidence is
+the middle range as a whole: from $q = 0.25$ to 0.65, Bot 4 is 1.5 points ahead
+of Bot 2 and 0.8 points ahead of Bot 3 on average, and it is ahead of or tied
+with both of them at every one of those $q$ values. It is also 3 to 6 points
+ahead of Bot 1 for $q$ from 0.15 to 0.4. For $q$ up to 0.15 there is no real
+difference between Bots 2, 3 and 4, and when the fire is very fast Bot 4 does
+worse: for $q$ from 0.8 to 1 it is 2.5 points behind Bot 2 (Section 3 explains
+why). Over all $q$ the gains and losses cancel out, which is why the "all $q$"
+row is close to zero.
 
 The gaps look small in Figure 3 because in almost every trial the bots end the
 same way: for $q$ from 0.1 to 0.7, all four bots win or all four lose in 93 to
@@ -198,14 +197,14 @@ they don't, which is why comparing them on the same trials matters so much.
 
 ![Figure 6](plots/ship_size.png)
 
-*Figure 6: Bot 4's success rate on ships of size 25, 50 and 100. $D = 50$ is the main run, and $D = 25$ and 100 have 100 trials at each $q$. The three lines have the same shape and stay within about 8 points of each other, which is within the noise for 100 trials.*
+*Figure 6: Bot 4's success rate on ships of size 25, 50 and 100. $D = 50$ is the main run, and $D = 25$ and 100 have 100 trials at each $q$. The three lines have the same shape and stay within about 8 points of each other, which is a small difference for only 100 trials at each point.*
 
 To see whether the size of the ship matters, I also ran Bot 4 on 25 by 25 and
 100 by 100 ships (Figure 6). A bigger ship makes the bot's path to the button
 longer, but it makes the fire's path longer too, so the race between them stays
 about the same. The three lines stay within about 8 points of each other, and
-with 100 trials each rate is only known to about $\pm 9$ points, so I can't say
-the size really matters.
+with only 100 trials at each point, differences that small could just be luck,
+so I can't say the size really matters.
 
 To check whether Bot 4 really decides differently from Bot 2, I count every move
 Bot 2's rule couldn't have made, meaning a move that isn't along some shortest
@@ -264,13 +263,12 @@ any cell with over a 60% chance of catching fire as burning, but only cells
 touching the fire can catch fire next step, so that was just Bot 3 again. Then I
 tried working out, for every cell, the chance that the fire gets there before
 the bot. It did about as well as the heat map, but it was much harder to
-explain, so I kept the heat map. I tuned the penalty on 800 trials the main run
-never uses (Figure 9). Penalties 5, 10, 20 and 30 were all within the noise of
-each other, so I kept 10, which is in the middle. These trials also show the
-same pattern as the main run: for $q$ = 0.2 to 0.6, Bot 4 was $1.7 \pm 1.0$
-points ahead of Bot 2, but at $q = 0.8$ it was 2.5 points behind, and there the
-smallest penalty (5) did a little better than 10, which fits the detour problem
-above.
+explain, so I kept the heat map. I tuned the penalty on 800 trials the main run never uses (Figure 9). Penalties
+5, 10, 20 and 30 were all less than a point apart, so I kept 10, which is in the
+middle. These trials also show the same pattern as the main run: for $q$ = 0.2
+to 0.6, Bot 4 was 1.7 points ahead of Bot 2, but at $q = 0.8$ it was 2.5 points
+behind, and there the smallest penalty (5) did a little better than 10, which
+fits the detour problem above.
 
 As I expected, Bot 4 detoured around the fire when it was worth it and was the
 best bot in the middle range. Some things surprised me: even at $q = 1$ the bots

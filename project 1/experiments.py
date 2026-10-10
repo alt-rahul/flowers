@@ -1,5 +1,3 @@
-import math
-
 import pandas as pd
 
 from simulation import run_bot, setup_trial
@@ -69,10 +67,10 @@ def success_table(results):
 
 
 # calculates how much better bot4 does than another bot for every q between low_q and high_q.
-# since both bots faced the exact same fire on every trial, we can compare them trial by trial: each trial gives
-# 1 (only bot4 won), -1 (only the other bot won) or 0 (both won or both lost), and the mean of all of those
-# is how much better bot4 is. it also returns the 95% confidence interval, which tells us how sure we can be:
-# if the whole interval is above 0 then bot4 really is better and it's not just luck
+# since both bots literally face the exact same fire on every single trial, it's safe to compare them trial by trial
+# each trial gives a value of either, 1, -1, or 0.
+# 1 (only the bot4 won), -1 (only the other bot won) or 0 (both either won or lost), and the mean of all of those
+# is how much better bot4 is
 def bot4_advantage(results, low_q, high_q, other):
     diffs = []
     for q in sorted(results["q"].unique()):
@@ -87,12 +85,7 @@ def bot4_advantage(results, low_q, high_q, other):
             diffs.append(bot4_success[i] - rival_success[i])
 
     mean = sum(diffs) / len(diffs)
-    total = 0
-    for d in diffs:
-        total += (d - mean) ** 2
-    standard_deviation = math.sqrt(total / (len(diffs) - 1))
-    error = 1.96 * standard_deviation / math.sqrt(len(diffs))   # 1.96 is the number for a 95% confidence interval
-    return 100 * mean, 100 * error   # times 100 to turn them into percentage points
+    return 100 * mean   # times 100 to turn it into percentage points
 
 
 # the q ranges that are used in the advantage table: (name, lowest q, highest q)
@@ -110,8 +103,8 @@ def advantage_table(results):
     for name, low_q, high_q in Q_RANGES:
         row = [name]
         for other in ["bot1", "bot2", "bot3"]:
-            mean, error = bot4_advantage(results, low_q, high_q, other)
-            row.append(f"{mean:+.1f} ± {error:.1f}")
+            mean = bot4_advantage(results, low_q, high_q, other)
+            row.append(f"{mean:+.1f}")
         rows.append(row)
     return pd.DataFrame(rows, columns=["q range", "vs Bot 1", "vs Bot 2", "vs Bot 3"])
 

@@ -1,5 +1,3 @@
-import math
-
 import matplotlib
 matplotlib.use("Agg")   # saves the charts as files instead of opening a window for each one
 import matplotlib.pyplot as plt
@@ -38,22 +36,14 @@ def column(results, q, bot, name):
     return list(rows[name])
 
 
-# calculates the mean of a list of numbers and how big its 95% confidence interval is, the interval tells us
-# how sure we can be about the mean: the real value is within mean +- error 95% of the time
-def mean_and_error(values):
-    n = len(values)
-    mean = sum(values) / n
-    total = 0
-    for value in values:
-        total += (value - mean) ** 2
-    standard_deviation = math.sqrt(total / (n - 1))
-    error = 1.96 * standard_deviation / math.sqrt(n)
-    return mean, error
+# calculates the mean (the average) of a list of numbers
+def mean(values):
+    return sum(values) / len(values)
 
 
 # the success rate of a bot at q (a success is 1 and a failure is 0, so the mean is the success rate)
 def success_rate(results, q, bot):
-    return mean_and_error(column(results, q, bot, "success"))
+    return mean(column(results, q, bot, "success"))
 
 
 # compares two bots on the exact same trials: for every trial, bot_a's result minus bot_b's result
@@ -65,7 +55,7 @@ def paired_difference(results, q, bot_a, bot_b):
     diffs = []
     for i in range(len(a)):
         diffs.append(a[i] - b[i])
-    return mean_and_error(diffs)
+    return mean(diffs)
 
 
 # at q, counts how many trials bot4 won while the other bot lost, and how many the other bot won while bot4 lost
@@ -117,7 +107,7 @@ def plot_success_rate(results, qs):
     for bot in BOTS:
         rates = []
         for q in qs:
-            rate, error = success_rate(results, q, bot)
+            rate = success_rate(results, q, bot)
             rates.append(100 * rate)
         plt.plot(qs, rates, marker="o", markersize=3, color=COLORS[bot], label=NAMES[bot])
     plt.xlabel("Flammability q")
@@ -335,29 +325,29 @@ def plot_tuning(tuning):
 
 # ------------------------------------------------------------- tables ----
 
-# every bot's success rate at every q, with its 95% confidence interval
+# every bot's success rate at every q
 def table_success_rates(results, qs):
-    report.append("## Success rate (95% CI)\n")
+    report.append("## Success rate (%)\n")
     report.append("| q | Bot 1 | Bot 2 | Bot 3 | Bot 4 |")
     report.append("|---|---|---|---|---|")
     for q in qs:
         line = f"| {q:g} |"
         for bot in BOTS:
-            rate, error = success_rate(results, q, bot)
-            line += f" {100 * rate:.1f}% ± {100 * error:.1f} |"
+            rate = success_rate(results, q, bot)
+            line += f" {100 * rate:.1f}% |"
         report.append(line)
 
 
 # bot4's success rate minus every other bot's on the same trials, at every q
 def table_differences(results, qs):
-    report.append("\n## Bot 4 minus each other bot, same trials (points, 95% CI)\n")
+    report.append("\n## Bot 4 minus each other bot, same trials (percentage points)\n")
     report.append("| q | vs Bot 1 | vs Bot 2 | vs Bot 3 |")
     report.append("|---|---|---|---|")
     for q in qs:
         line = f"| {q:g} |"
         for bot in ["bot1", "bot2", "bot3"]:
-            diff, error = paired_difference(results, q, "bot4", bot)
-            line += f" {100 * diff:+.1f} ± {100 * error:.1f} |"
+            diff = paired_difference(results, q, "bot4", bot)
+            line += f" {100 * diff:+.1f} |"
         report.append(line)
 
 
@@ -449,8 +439,7 @@ def tuning_difference(tuning, bot):
         b = column(tuning, q, TUNING_CHOSEN, "success")
         for i in range(len(a)):
             diffs.append(a[i] - b[i])
-    mean, error = mean_and_error(diffs)
-    return 100 * mean, 100 * error
+    return 100 * mean(diffs)
 
 
 # the tuning results as a table: every setting's success rate and how far it is from the chosen bot4
@@ -460,9 +449,9 @@ def table_tuning(tuning):
     report.append("|---|---|---|")
     for bot, label in TUNING_LABELS:
         rows = tuning[tuning["bot"] == bot]
-        mean, error = tuning_difference(tuning, bot)
+        difference = tuning_difference(tuning, bot)
         label = label.replace("\n", " ")
-        report.append(f"| {label} | {100 * rows['success'].mean():.2f}% | {mean:+.2f} ± {error:.2f} |")
+        report.append(f"| {label} | {100 * rows['success'].mean():.2f}% | {difference:+.2f} |")
 
 
 # reads the results, makes every chart and every table, and saves the tables in results/summary.md
