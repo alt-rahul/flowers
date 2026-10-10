@@ -12,14 +12,13 @@ FIRE_SEED = 67   # added to the trial number to get the fire's seed, so the fire
 #the seed also happens to be a specical number these days...something to ponder about
 
 # the columns of every results file, each row is one bot on one trial
-COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "deviations", "ms",
-           "close_calls", "mind_changes", "victory_margin"]
+COLUMNS = ["D", "q", "trial", "bot", "success", "reason", "steps", "ms", "close_calls", "change_plan"]
 
 
 # turns the result of one run into one row of the results file (in the same order as COLUMNS)
 def make_row(D, q, trial, name, result):
-    return [D, q, trial, name, int(result["success"]), result["reason"], result["steps"], result["deviations"],
-            round(result["ms"], 3), result["close_calls"], result["mind_changes"], result["victory_margin"]]
+    return [D, q, trial, name, int(result["success"]), result["reason"], result["steps"],
+            round(result["ms"], 3), result["close_calls"], result["change_plan"]]
 
 
 # this function runs all 4 bots on one trial (the same ship, the same starting cells and the same fire)

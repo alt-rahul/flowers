@@ -45,22 +45,6 @@ def by_q(results, column):
     return table
 
 
-# for every q: how many trials bot4 left bot2's rule (made at least one move bot2 couldn't have made) and won
-# while bot2 lost, and how many it left bot2's rule and lost while bot2 won. pivot puts one trial on each row
-# and one bot in each column, so the same row is the same ship with the same fire
-def detour_outcomes(results):
-    rows = []
-    for q in sorted(results["q"].unique()):
-        trials = results[results["q"] == q]
-        success = trials.pivot(index="trial", columns="bot", values="success")
-        left_rule = trials.pivot(index="trial", columns="bot", values="deviations") > 0
-        won = left_rule["bot4"] & (success["bot4"] == 1) & (success["bot2"] == 0)
-        lost = left_rule["bot4"] & (success["bot4"] == 0) & (success["bot2"] == 1)
-        rows.append([q, won.sum(), lost.sum()])
-    return pd.DataFrame(rows, columns=["q", "Bot 4 left the rule and won where Bot 2 lost",
-                                       "Bot 4 left the rule and lost where Bot 2 won"])
-
-
 # every q uses the same 200 ships with the same fire seed, so for every ship we can find the lowest q where
 # a bot first loses it, which I call its "breaking point". one row for each ship and one column for each bot,
 # and a ship the bot never loses is left empty
@@ -163,19 +147,11 @@ def main():
     # success rate (%) of every bot at every q (experiments.py already saved it as results/success_by_q.csv)
     success = 100 * by_q(results, "success")
 
-    # deviations: the % of trials at each q where a bot left bot2's rule at least once
-    results["left_rule"] = results["deviations"] > 0
-    left_rule = (100 * by_q(results, "left_rule")).round(1)[["Bot 3", "Bot 4"]]
-    left_rule.to_csv("results/deviations_by_q.csv")
-    detour_outcomes(results).to_csv("results/bot4_detour_outcomes.csv", index=False)
-
-    # the three things counted during every run (close calls per 100 runs, since they are rare)
+    # the two things counted during every run (close calls per 100 runs, since they are rare)
     close_calls = (100 * by_q(results, "close_calls")).round(1)
-    mind_changes = by_q(results, "mind_changes").round(2)[["Bot 2", "Bot 3", "Bot 4"]]   # bot1 is always 0
-    victory_margin = by_q(results[results["success"] == 1], "victory_margin").round(1)   # only the wins
+    change_plan = by_q(results, "change_plan").round(2)[["Bot 2", "Bot 3", "Bot 4"]]   # bot1 is always 0
     close_calls.to_csv("results/close_calls_by_q.csv")
-    mind_changes.to_csv("results/mind_changes_by_q.csv")
-    victory_margin.to_csv("results/victory_margin_by_q.csv")
+    change_plan.to_csv("results/change_plan_by_q.csv")
 
     # breaking points
     points = breaking_points(results)
@@ -201,13 +177,10 @@ def main():
 
     line_chart(success, "Success rate (%)", "Success rate vs flammability q", "success_rate.png")
     plot_heat_cost()
-    line_chart(left_rule, "Trials (%)", "How often a bot makes a move Bot 2 wouldn't", "divergence.png")
     line_chart(close_calls, "Close calls per 100 runs", "How often a bot ends a move right next to the fire",
                "close_calls.png")
-    line_chart(mind_changes, "Changes of mind per run", "How often a bot switches to a different route",
-               "mind_changes.png")
-    line_chart(victory_margin, "Moves the fire still needed to reach the button",
-               "How close the fire was when the button got pressed", "victory_margin.png")
+    line_chart(change_plan, "Changes of mind per run", "How often a bot switches to a different route",
+               "change_plan.png")
     line_chart(unbeaten, "Ships never lost up to this q (%)", "How much fire a bot can handle on the same ship",
                "breaking_point.png")
     plot_tuning(tuning_table["all q"])

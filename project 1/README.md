@@ -55,11 +55,9 @@ Every row of a results file is one bot on one trial:
 | `success` | 1 if the button was pressed |
 | `reason` | `success`, `entered_fire`, `caught`, `button_burned` or `trapped` (cut off from the button) |
 | `steps` | how many moves the bot made |
-| `deviations` | moves Bot 2's rule couldn't have made (0 = it acted like Bot 2) |
 | `ms` | time spent deciding, in milliseconds (the only column that changes if you run it again) |
 | `close_calls` | moves that ended right next to a burning cell |
-| `mind_changes` | times the bot dropped its plan for a different route (always 0 for Bot 1) |
-| `victory_margin` | if the bot won, how many moves the fire still needed to reach the button (empty if it lost) |
+| `change_plan` | times the bot dropped its plan for a different route (always 0 for Bot 1) |
 
 - `results/main.csv`: the main run at D = 50: every q from 0 to 1 in steps of
   0.05, with 200 trials at each q (the same 200 ships at every q).
@@ -77,11 +75,8 @@ number in the writeup can be read straight off it):
 
 | File | What it has |
 |---|---|
-| `results/deviations_by_q.csv` | the % of trials at each q where Bot 3 or Bot 4 left Bot 2's rule at least once |
-| `results/bot4_detour_outcomes.csv` | at each q, the trials where Bot 4 left Bot 2's rule and won while Bot 2 lost, and the other way round |
 | `results/close_calls_by_q.csv` | close calls per 100 runs, for every bot at every q |
-| `results/mind_changes_by_q.csv` | changes of mind per run, for Bots 2, 3 and 4 at every q |
-| `results/victory_margin_by_q.csv` | the average victory margin over the wins, for every bot at every q |
+| `results/change_plan_by_q.csv` | changes of mind per run, for Bots 2, 3 and 4 at every q |
 | `results/breaking_point_by_ship.csv` | for every ship, the lowest q at which each bot first loses it (empty if it never does) |
 | `results/breaking_point_summary.csv` | ships each bot never loses, and its average breaking point on the ships every bot loses |
 | `results/think_time.csv` | how long each bot takes to decide one move (ms) |
@@ -97,11 +92,9 @@ number in the writeup can be read straight off it):
 | `heat_cost.png` | What a cell costs Bot 4 based on how far the fire has to travel to reach it, for q = 0.2, 0.5 and 0.8 (Figure 1 in the writeup). |
 | `success_rate.png` | Each bot's success rate at every q (Figure 2). |
 | `breaking_point.png` | The % of ships a bot hasn't lost yet at any q up to each q (Figure 3). |
-| `divergence.png` | How often Bots 3 and 4 make a move Bot 2's rule couldn't have made (Figure 4). |
-| `close_calls.png` | Close calls per 100 runs (Figure 5). |
-| `mind_changes.png` | Changes of mind per run (Figure 6). |
-| `victory_margin.png` | The average victory margin over the wins (Figure 7). |
-| `tuning.png` | The success rate of every setting in the tuning run (Figure 8). |
+| `close_calls.png` | Close calls per 100 runs (Figure 4). |
+| `change_plan.png` | Changes of mind per run (Figure 5). |
+| `tuning.png` | The success rate of every setting in the tuning run (Figure 6). |
 
 ## What the results show
 
@@ -114,9 +107,8 @@ number in the writeup can be read straight off it):
 - From q = 0.6 up, thinking stops mattering: Bot 1, which never replans, has
   exactly the same success rate as Bot 2, and at q = 1 all four bots win 53%
   of the trials.
-- Bots 3 and 4 have far fewer close calls than Bots 1 and 2, every replanning
-  bot changes its mind more as q grows, and the victory margin shrinks from
-  about 41 moves at q = 0 to about 18 at q = 1 for every bot.
+- Bots 3 and 4 have far fewer close calls than Bots 1 and 2, and every
+  replanning bot changes its mind more as q grows.
 - Bot 4 holds out to the highest q on the 94 ships every bot eventually loses,
   but it is the only bot that loses 5 ships the others never lose.
 - In tuning, penalties 5, 10, 20 and 30 all did about the same, so `PENALTY`
@@ -135,6 +127,5 @@ number in the writeup can be read straight off it):
   number (BURNING_COST), so the bot never steps on fire.
 - BFS has one line more than the lecture pseudocode: a child that is already
   in `prev` is already on the fringe, so it isn't added again.
-- From the instructor's guidance: every bot faces the same fire on a trial,
-  and counting the moves Bot 2's rule couldn't make.
+- From the instructor's guidance: every bot faces the same fire on a trial.
 - The folder is called `project 1` (with a space), so quote it in the shell.

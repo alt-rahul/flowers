@@ -14,14 +14,6 @@ def test_bot1_follows_its_first_plan():
             assert result["path"] == plan[:len(result["path"])]
 
 
-def test_bot2_never_leaves_its_own_rule():
-    for q in [0.2, 0.5]:
-        for trial in range(30):
-            ship, bot_start, button, fire_start = setup_trial(20, trial)
-            result = run_bot(ship, bot_start, button, fire_start, q, 2, trial)
-            assert result["deviations"] == 0
-
-
 def test_every_run_follows_the_rules():
     for q in [0.0, 0.2, 0.5, 1.0]:
         for trial in range(25):

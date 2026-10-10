@@ -4,7 +4,6 @@ import numpy as np
 
 from bots import PENALTY, bot1_path, bot2_path, bot3_path, bot4_path
 from fire import spread_fire
-from search import map_distance
 from ship import generate_ship
 
 #this is the set up trial, meaning it will set up the "environment" for the us to run the bots
@@ -44,10 +43,8 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
     path = [pos]
     plan = None #plan the list of corrdinates that the bot wants to go step by step, at the first index is the current position of the bot
     #the second index is the next position the bot will take, the plan gets recomputed at everytime step unless it's bot1
-    deviations = 0 
     close_calls = 0 # placeholder
     change_plan = 0 # placeholder
-    victory_margin = None # placeholder
     old_plan = None # placeholder
     think_time = 0.0 # this just measures the time the bot took
     max_steps = 2 * len(ship.open_cells())   #max number of timesteps, theortically shoudln't take more than 2x the # of cells that exist
@@ -113,7 +110,6 @@ def run_bot(ship, bot_start, button, fire_start, q, bot, fire_seed, penalty=PENA
         "reason": reason,
         "steps": len(path) - 1,
         "path": path,
-        "deviations": deviations,
         "ms": think_time * 1000,
         "close_calls": close_calls,
         "change_plan": change_plan,
