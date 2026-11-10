@@ -21,7 +21,7 @@ search is (number of moves) + 1/2 (number of detector uses).
 Needs Python 3 with `numpy`, `pandas` and `matplotlib`. Run everything from this folder:
 
 ```bash
-python experiments.py     # every search, about 15 minutes on 4 cores
+python experiments.py     # every search, about 30 minutes on 4 cores
 python analysis.py        # the charts, a few seconds
 ```
 
