@@ -1,14 +1,13 @@
 import numpy as np
 
-from detector import update_type_b
-from search import bfs, map_distance
+from detector import ping_chance_map
+from search import map_distance
 
 # this file has the 4 strategies (2 baselines and 2 of mine) that decide where the LocatorBot goes next.
 # every strategy gets the knowledge base and the LocatorBot's position and returns the cell it wants to go to,
-# the simulation then walks there with BFS. my type B strategy also decides how many times to run the
-# detector before moving, the other three always run it once when they get somewhere
-
-MAX_READINGS = 3   # the most times my type B strategy runs the detector in one cell before moving on
+# the simulation then walks there with BFS and runs the detector once when it gets there.
+# both of my strategies come from ideas from class: type A treats the detector like the MIN player in a
+# minimax game tree, and type B plays "warmer / colder" with hill climbing from the local search lecture
 
 
 # BFS distances (number of moves) from pos to every cell as a numpy array, it's just map_distance from
@@ -40,91 +39,104 @@ def baseline_b(ship, prob, pos):
     return (int(r), int(c))
 
 
-# ---------------------------------------------- my type A ----------------------------------------------
+# ------------------------------------------ my type A: minimax ------------------------------------------
 
-# how many cells we expect to cross out if we run the type A detector at spot x. there are N possible cells
-# left and they're all equally likely, so if "inside" of them are in x's square:
-#   - with chance inside/N it pings and the "outside" cells get crossed out
-#   - with chance outside/N it doesn't ping and the "inside" cells get crossed out
-# if the LostBot could be in x itself, there's also a 1/N chance we find it right there (which solves
-# everything, so it counts as 1 whole search), and x gets crossed out when it pings but we didn't find it
-def expected_crossed_out(possible, x, k):
-    N = possible.sum()
+# in a game tree from class, MAX picks the move whose WORST case is the best, because it assumes MIN will
+# always answer with the move that's worst for MAX. here the LocatorBot is MAX (it picks where to run the
+# detector) and the detector is MIN (it picks the answer, ping or no ping). so for a spot x, this counts the
+# cells the reading is sure to cross out, whichever answer we get:
+#   - ping: every possible cell outside x's square gets crossed out
+#   - no ping: every possible cell inside x's square gets crossed out
+# so the worst case is the smaller of the two. if the LostBot could be in x itself, x is gone either way
+# (either the detector says found or x gets crossed out), so it counts as 1 more
+def sure_crossed_out(possible, x, k):
     r, c = x
-    inside = possible[max(r - k, 0):r + k + 1, max(c - k, 0):c + k + 1].sum()
-    outside = N - inside
-    if possible[r, c]:
-        return 1 + (inside - 1) / N * (outside + 1) + outside / N * inside
-    return inside / N * outside + outside / N * inside
+    here = 1 if possible[r, c] else 0
+    inside = possible[max(r - k, 0):r + k + 1, max(c - k, 0):c + k + 1].sum() - here
+    outside = possible.sum() - inside - here
+    return here + min(inside, outside)
 
 
-# my type A strategy: instead of walking to the nearest cell that the LostBot could be in, pick the spot
-# where running the detector crosses out the most cells for what it costs to get there and run it
-# (moves + 1/2). the best spot is usually a cell where the LostBot can't even be: before a ping it's a spot just
-# past the edge of what we've already searched so the whole square is new, and after a ping it's a spot whose
-# square cuts the possible cells roughly in half, kind of like binary search.
-# before the first ping I only let it look at spots a little past the nearest possible cell (at most k more
-# moves), so it pushes out from where it already searched and doesn't leave holes it has to walk back to later.
-# when moving is free (question 6), the walking cost doesn't matter so it just picks the spot that crosses
-# out the most cells
-def my_a(ship, possible, pos, k, pinged, free_moves):
+# my type A strategy: go to the spot where running the detector is sure to cross out the most cells for what
+# it costs to get there and run it (moves + 1/2), breaking ties by the closest spot. before the first ping
+# a square full of cells we haven't searched yet has a small inside and a huge outside, so this picks a spot
+# just past the edge of what we've already searched (the baseline reads right on that edge, so half its square
+# was already searched). after a ping, the possible cells are all inside one square, so the best spot is one
+# whose square cuts them in half, which is just binary search (each reading halves the possible cells).
+# when moving is free (question 6) the walking cost doesn't matter, so it just picks the spot that's sure
+# to cross out the most cells anywhere on the ship, so every reading is a perfect "20 questions" split
+def my_a(ship, possible, pos, k, free_moves):
     dist = walk_distances(ship, pos)
-    nearest = dist[possible].min()
     best = None
     best_score = -1
     for x in ship.open_cells():
-        if not pinged and not free_moves and dist[x] > nearest + k:
-            continue
-        score = expected_crossed_out(possible, x, k)
+        score = sure_crossed_out(possible, x, k)
         if not free_moves:
             score = score / (dist[x] + 0.5)
-        if score > best_score:
+        if score > best_score or (score == best_score and dist[x] < dist[best]):
             best = x
             best_score = score
     return best
 
 
-# ---------------------------------------------- my type B ----------------------------------------------
+# --------------------------------------- my type B: warmer / colder ---------------------------------------
 
-# the cell my type B strategy wants to head towards: the cell with the best chance of having the LostBot
-# for how far away it is, P(cell) / (moves to get there + 1). the baseline only looks at P(cell), so after a
-# "no ping" it walks all the way across the ship to the cell that's furthest away. this one would rather check a
-# slightly less likely cell that's way closer
-def b_goal(prob, dist):
-    score = prob / (dist + 1)
-    r, c = np.unravel_index(np.argmax(score), score.shape)
-    return (int(r), int(c))
-
-
-# the next cell on the way to the goal (or the goal itself if we're already there)
-def next_cell(ship, pos, goal):
-    if goal == pos:
-        return pos
-    return bfs(ship, pos, goal, set())[1]
+# how "warm" a cell is: the chance that running the detector there pings (or finds the LostBot). this is
+# marginalization like P(heads) in the two coins example from class, we don't know where the LostBot is so
+# we add up every place it could be times the chance of a ping if it was there:
+#   warmth(x) = sum over cells b of P(LostBot in b) * P(ping | we're in x, LostBot in b)
+# if the LostBot is in x itself the detector says found, which is even better than a ping so it counts as 1
+def warmth(prob, x, alpha):
+    chance = ping_chance_map(prob.shape[0], x, alpha)
+    chance[x] = 1
+    return (prob * chance).sum()
 
 
-# my type B strategy walks one cell at a time towards b_goal, and every step it decides again where to go.
-def my_b(ship, prob, pos):
-    dist = walk_distances(ship, pos)
-    return next_cell(ship, pos, b_goal(prob, dist))
+# my type B strategy is hill climbing (from the local search lecture) on how warm a cell is, like the game
+# "warmer / colder". it only ever looks at the cells next to it: if one of them is warmer than where it is,
+# it steps there (and runs the detector there, since every new cell gets a reading). every reading updates
+# the probabilities, so the hill moves as the bot learns: a ping makes the cells around us warmer, a no ping
+# makes them colder and pushes the bot away. if no neighbor is warmer, it's at the top of a hill, and like
+# the baseline it goes to the most likely cell (this is how it gets out of a local maximum)
+def my_b(ship, prob, pos, alpha):
+    best = None
+    best_warmth = warmth(prob, pos, alpha)
+    for y in ship.neighbors(pos):
+        w = warmth(prob, y, alpha)
+        if w > best_warmth:
+            best = y
+            best_warmth = w
+    if best is None:
+        return baseline_b(ship, prob, pos)
+    return best
 
 
-# this decides if my type B strategy should run the detector (again) in the cell it's in. a reading costs
-# half a move, so it's only worth it if the answer could actually change what we do next: I work out the
-# knowledge base for both answers (ping and no ping) and if both would send the bot to the same next cell,
-# the reading wouldn't change anything so we skip it. if they'd send it to different cells we run it, and then
-# check again, so sometimes it runs the detector 2 or 3 times in one spot when the readings disagree. that's
-# like flipping the mystery coin again from the two coins example in class, every extra flip makes us more sure.
-# it always runs the detector when the cell it's standing on is the goal, since that's how it finds the LostBot
-def my_b_wants_reading(ship, prob, pos, alpha, readings_here):
-    dist = walk_distances(ship, pos)
-    goal = b_goal(prob, dist)
-    if goal == pos:
-        return True
-    if readings_here >= MAX_READINGS:
-        return False
-    goal_if_ping = b_goal(update_type_b(prob, pos, True, alpha), dist)
-    goal_if_no_ping = b_goal(update_type_b(prob, pos, False, alpha), dist)
-    if goal_if_ping == goal_if_no_ping:
-        return False
-    return next_cell(ship, pos, goal_if_ping) != next_cell(ship, pos, goal_if_no_ping)
+# ---------------------------------- my type B when moving is free: fairest coin ----------------------------------
+
+# the warmth of every open cell at once. it uses a table of the ping chance between every pair of open
+# cells (an open cells by open cells array), so the warmth of every cell is one matrix times vector. the table
+# only depends on the ship and alpha, so it gets saved on the ship and only rebuilt when alpha changes
+def warmth_everywhere(ship, prob, alpha):
+    if getattr(ship, "table_alpha", None) != alpha:
+        cells = np.array(ship.open_cells())
+        d = np.sqrt(((cells[:, None, :] - cells[None, :, :]) ** 2).sum(axis=2))
+        ship.table = np.exp(-alpha * (d - 1))
+        np.fill_diagonal(ship.table, 1)   # the LostBot's own cell says found, which counts as 1 (same as warmth)
+        ship.table_cells = cells
+        ship.table_alpha = alpha
+    cells = ship.table_cells
+    return cells, ship.table @ prob[cells[:, 0], cells[:, 1]]
+
+
+# my type B strategy when moving is free (question 6). a reading you can already predict teaches you
+# nothing, like flipping a coin you know is double headed. so it runs the detector where the chance of a
+# ping is closest to 50/50, which is the "fairest coin" we could flip. but a fair coin far away can't tell
+# apart cells that are right next to each other, so every other reading it checks its best guess (the most
+# likely cell, like the baseline), which is also the only way to actually find the LostBot.
+# readings is how many times we've run the detector so far, so this switches between the two each time
+def fairest_coin(ship, prob, pos, alpha, readings):
+    if readings % 2 == 0:
+        return baseline_b(ship, prob, pos)
+    cells, w = warmth_everywhere(ship, prob, alpha)
+    i = np.argmin(np.abs(w - 0.5))
+    return (int(cells[i, 0]), int(cells[i, 1]))

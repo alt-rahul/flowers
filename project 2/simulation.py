@@ -36,7 +36,7 @@ def open_mask(ship):
 # anything. the seed is for the random numbers (type B pings and breaking ties), so the same run can be done
 # again exactly the same way.
 # every loop the LocatorBot:
-#   1. runs the detector where it is (my type B strategy might run it 0, 1, 2 or 3 times, the others once)
+#   1. runs the detector where it is (once, every strategy does this)
 #   2. updates its knowledge base with the reading
 #   3. picks where to go next and walks there with BFS
 # it stops as soon as it runs the detector in the LostBot's cell. it returns how many moves and detector
@@ -57,29 +57,23 @@ def run_search(ship, bot_start, lost, detector, setting, strategy, seed, free_mo
     moves = 0
     readings = 0
     found = False
-    pinged = False   # has the type A detector pinged yet, my type A strategy acts differently before and after
 
     while moves + readings < MAX_ACTIONS:
         # 1 and 2. run the detector and update the knowledge base
-        readings_here = 0
-        while wants_reading(ship, knowledge, pos, detector, setting, strategy, readings_here, free_moves):
-            readings += 1
-            readings_here += 1
-            if pos == lost:
-                found = True   # the detector says we've found it
-                break
-            if detector == "A":
-                ping = type_a_ping(pos, lost, setting)
-                knowledge = update_type_a(knowledge, pos, ping, setting)
-                pinged = pinged or ping
-            else:
-                ping = type_b_ping(pos, lost, setting)
-                knowledge = update_type_b(knowledge, pos, ping, setting)
-        if found:
+        readings += 1
+        if pos == lost:
+            found = True   # the detector says we've found it
             break
+        if detector == "A":
+            ping = type_a_ping(pos, lost, setting)
+            knowledge = update_type_a(knowledge, pos, ping, setting)
+        else:
+            ping = type_b_ping(pos, lost, setting)
+            knowledge = update_type_b(knowledge, pos, ping, setting)
 
-        # 3. pick where to go next and walk there, every cell on the path is one move
-        target = pick_target(ship, knowledge, pos, detector, setting, strategy, pinged, free_moves)
+        # 3. pick where to go next and walk there, every cell on the path is one move. if the strategy
+        # picks the cell it's already in (my fairest coin strategy can), it just runs the detector there again
+        target = pick_target(ship, knowledge, pos, detector, setting, strategy, readings, free_moves)
         path = bfs(ship, pos, target, set())
         moves += len(path) - 1
         ship.tile(pos).has_bot = False
@@ -98,23 +92,15 @@ def run_search(ship, bot_start, lost, detector, setting, strategy, seed, free_mo
     }
 
 
-# whether the LocatorBot should run the detector (again) in the cell it's in. only my type B strategy decides
-# this for itself (and not when moving is free, since then it just goes wherever the best reading is),
-# everything else runs it exactly once every time it gets somewhere
-def wants_reading(ship, knowledge, pos, detector, setting, strategy, readings_here, free_moves):
-    if detector == "B" and strategy == "mine" and not free_moves:
-        return strategies.my_b_wants_reading(ship, knowledge, pos, setting, readings_here)
-    return readings_here == 0
-
-
-# which strategy picks the next cell to go to
-def pick_target(ship, knowledge, pos, detector, setting, strategy, pinged, free_moves):
+# which strategy picks the next cell to go to. readings is how many times we've run the detector so far,
+# my fairest coin strategy (type B when moving is free) uses it to switch between its two kinds of readings
+def pick_target(ship, knowledge, pos, detector, setting, strategy, readings, free_moves):
     if detector == "A" and strategy == "baseline":
         return strategies.baseline_a(ship, knowledge, pos)
     if detector == "A":
-        return strategies.my_a(ship, knowledge, pos, setting, pinged, free_moves)
-    # when moving is free, the "moves to get there" part of my type B score doesn't matter anymore, so my
-    # strategy just goes to the most likely cell, which is exactly what the baseline does
-    if strategy == "baseline" or free_moves:
+        return strategies.my_a(ship, knowledge, pos, setting, free_moves)
+    if strategy == "baseline":
         return strategies.baseline_b(ship, knowledge, pos)
-    return strategies.my_b(ship, knowledge, pos)
+    if free_moves:
+        return strategies.fairest_coin(ship, knowledge, pos, setting, readings)
+    return strategies.my_b(ship, knowledge, pos, setting)

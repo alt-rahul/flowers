@@ -25,7 +25,7 @@ def line_chart(table, strategies, xlabel, ylabel, title, filename, log_x=False, 
     x = table.columns[0]
     plt.figure(figsize=(8, 5))
     for strategy in strategies:
-        # my free moves line is dashed since for type B it's exactly on top of the baseline line
+        # my free moves line is dashed so it's easy to tell apart from my normal strategy
         style = "--" if strategy == "mine (free moves)" else "-"
         plt.plot(table[x], table[strategy], style, marker="o", markersize=4, color=COLORS[strategy], label=strategy)
     if log_x:

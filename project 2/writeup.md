@@ -89,65 +89,80 @@ completely rules out the 4 cells next to the LocatorBot.
 
 ## 3. My strategies (Question 2)
 
-Before writing any code, I wrote down every idea I could think of and then threw
-out the most common ones. For type A, I threw out running the detector at every
-step (the readings from two cells next to each other mostly say the same thing),
-sweeping the ship in rows like a lawnmower (the walls make that messy, and the
-baseline already sweeps), and always splitting the possible cells in half like
-binary search (that ignores how far you have to walk to do it). For type B, I
-threw out information gain (the textbook answer), and walking to the "center" of
-the probabilities (the center can be inside a wall, or between two separate
-groups of likely cells). I also tried one idea from the local search lecture:
-choosing a set of detector stops that covers the whole ship, then ordering them
-with hill climbing like the traveling salesman example. In a quick test it
-wasn't consistently better than the baseline's nearest-first sweep, so I dropped
-it. The two ideas I kept are below.
+The baselines are reasonable, so instead of just tuning them, I looked at the
+problem through ideas from other parts of the class, and kept each strategy to
+one simple rule so it's clear what it's doing and why. Before picking these two,
+I tried a few other ideas from class in quick tests on a small number of ships:
+hill climbing the reading spot (local search) for type A, and for type B,
+sampling a target cell from the probabilities (sampling from the approximate
+inference lecture) and a "treasure map" built with the $U^*_T$ recursion from
+the MDP lecture. They all beat the baselines too, but the two below were the
+simplest to explain and the most different from what the baselines do.
 
-My type A strategy picks the spot where running the detector crosses out the
-most cells for what it costs to get there. If there are $N$ possible cells left
-and $n_{in}$ of them are inside the square around a spot $x$ (and
-$n_{out} = N - n_{in}$ outside), then with chance $n_{in}/N$ it pings and the
-$n_{out}$ outside cells get crossed out, and with chance $n_{out}/N$ it doesn't
-and the $n_{in}$ inside cells get crossed out. So the expected number of cells
-crossed out is
+**Type A: the detector as the MIN player (minimax).** In the game trees from
+class, MAX picks the move whose worst case is the best, because it assumes MIN
+will always answer in the way that's worst for MAX. I treat the search the same
+way: the LocatorBot is MAX and picks where to run the detector, and the detector
+is MIN and "picks" the answer. For a spot $x$, let $n_{in}$ be the possible
+cells inside its square (not counting $x$ itself) and $n_{out}$ the possible
+cells outside it. A ping crosses out the $n_{out}$ cells and a no ping crosses
+out the $n_{in}$ cells, so whatever the answer is, the reading is sure to cross
+out
 
-$$E(x) = \frac{n_{in}}{N} n_{out} + \frac{n_{out}}{N} n_{in}$$
+$$\text{sure}(x) = [x \in S] + \min(n_{in}, n_{out})$$
 
-(if the LostBot could be in $x$ itself, there is also a $1/N$ chance of finding
-it right there, which I count as solving the whole search). The bot goes to the
-spot with the best $E(x) / (w(x) + \tfrac{1}{2})$, where $w(x)$ is the number
-of moves to get there with BFS and the $\tfrac{1}{2}$ is the detector use. So it
-uses everything in its knowledge base: which cells are still possible, where
-they are compared to every spot's square, and how far every spot is. The best
-spot is usually a cell where the LostBot can't even be. Before the first ping,
-it's a spot just past the edge of what has already been searched, so the whole
-square is new. The baseline instead walks to the nearest possible cell, which is
-right on that edge, so half of every square it checks was already searched.
-After a ping, the best spot is one whose square cuts the possible cells roughly
-in half, which is basically binary search, but only when the walk is worth it.
-The baseline instead shuffles over one cell at a time. One more rule: before the
-first ping, the bot only looks at spots at most $k$ moves further than the
-nearest possible cell. Without it, the bot jumped to the biggest unsearched area
-and left small holes behind, and walking back to those later cost more than it
-saved.
+cells, where $[x \in S]$ is 1 if the LostBot could be in $x$ (then $x$ is gone
+either way: the detector either says found or crosses it out) and 0 if not. The
+bot goes to the spot with the best $\text{sure}(x) / (w(x) + \tfrac{1}{2})$,
+where $w(x)$ is the number of moves to get there with BFS and the
+$\tfrac{1}{2}$ is the detector use, breaking ties by the closest spot. So it uses
+everything in its knowledge base: which cells are still possible, where they are
+compared to every spot's square, and how far away every spot is.
 
-My type B strategy heads towards the cell with the best chance of having the
-LostBot for how far away it is, $P(b) / (w(b) + 1)$, instead of just the most
-likely cell. After a "no ping", the most likely cell is the cell furthest away
-(that's where a no ping makes the most sense), so the baseline walks all the way
-across the ship without running the detector once on the way. Mine walks one
-cell at a time and decides again after every step, so it uses the new readings
-as it goes and would rather check a slightly less likely cell that's much
-closer. The second part decides how many times to run the detector in each cell.
-A reading costs half a move, so it's only worth it if the answer could change
-what the bot does next. In every cell the bot works out what its knowledge base
-would be after a ping and after a no ping. If both would send it to the same
-next cell, it skips the reading. If they'd send it to different cells, it runs
-the detector, then checks again, so sometimes it runs it 2 or 3 times in the
-same cell, like flipping the mystery coin again in the two coins example. It
-always runs it in the cell it was heading for, since that's how it finds the
-LostBot. So it uses the whole probability map, the BFS distances, and $\alpha$
-(to work out the two possible knowledge bases).
+This one rule acts differently before and after the first ping without me having
+to tell it to. Before a ping, a square full of unsearched cells has a small
+inside and a huge outside, so the worst case is "no ping", and the best spot is
+the one whose square holds the most unsearched cells for its cost. That's
+usually a spot just past the edge of what's already been searched. The baseline
+walks to the nearest possible cell instead, which is right on that edge, so about
+half of every square it checks was already searched. After a ping, every
+possible cell is inside one square, so the best spot is the one whose square
+cuts them in half, since then neither answer can be bad. That's binary search:
+each reading halves the possible cells, while the baseline goes back to checking
+the nearest cell one at a time. The best spot is often a cell where the LostBot
+can't even be, which the baseline never considers. I used the worst case instead
+of the average because a reading that splits the cells evenly is good whatever
+the answer is, while a lopsided reading is only good if we get lucky.
+
+**Type B: warmer / colder (hill climbing).** For the type B detector I used the
+game "warmer / colder" with hill climbing from the local search lecture. The
+"warmth" of a cell $x$ is the chance that running the detector there pings (or
+finds the LostBot), which I get with marginalization, like $P(H)$ in the two
+coins example:
+
+$$\text{warmth}(x) = \sum_{b} P(b) \, P(\text{ping} \mid \text{LocatorBot in } x, \text{LostBot in } b)$$
+
+where the LostBot's own cell counts as 1, since there the detector says found,
+which is even better than a ping. In every cell, the bot runs the detector and
+updates its knowledge base, then it only looks at the cells next to it. If one
+of them is warmer than where it is, it steps to the warmest one (hill climbing:
+move to the best neighbor if it's better than where you are). If none of them
+are warmer, the bot is at the top of a hill (a local maximum), so it walks to
+the most likely cell like the baseline does, which works like a restart. Every
+reading changes the hill: a ping makes the cells around the bot warmer so it
+keeps climbing towards them, and a no ping makes them colder and pushes it away.
+So it uses the whole probability map (through the warmth) and $\alpha$ to decide
+between the cells next to it.
+
+This should beat the baseline because the baseline makes one decision and then
+walks the whole way without running the detector. After a "no ping", the most
+likely cell is the one furthest away, so the baseline walks all the way across
+the ship and learns nothing on the way. Mine runs the detector in every cell it
+steps on (half a move each) and lets every reading change where it goes next.
+Warmth is also smoother than the probabilities themselves: a cell is warm if a
+lot of probability is near it, not just in it, so the bot heads for the area
+where the LostBot probably is, instead of one cell that's only slightly more
+likely than the cells around it.
 
 ## 4. Type A: baseline vs my strategy (Question 3)
 
