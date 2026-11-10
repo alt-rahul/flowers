@@ -71,8 +71,8 @@ def run_search(ship, bot_start, lost, detector, setting, strategy, seed, free_mo
             ping = type_b_ping(pos, lost, setting)
             knowledge = update_type_b(knowledge, pos, ping, setting)
 
-        # 3. pick where to go next and walk there, every cell on the path is one move. if the strategy
-        # picks the cell it's already in (my fairest coin strategy can), it just runs the detector there again
+        # 3. pick where to go next and walk there, every cell on the path is one move
+        # (if it picks the cell it's already in, it just runs the detector there again)
         target = pick_target(ship, knowledge, pos, detector, setting, strategy, readings, free_moves)
         path = bfs(ship, pos, target, set())
         moves += len(path) - 1
@@ -92,8 +92,7 @@ def run_search(ship, bot_start, lost, detector, setting, strategy, seed, free_mo
     }
 
 
-# which strategy picks the next cell to go to. readings is how many times we've run the detector so far,
-# my fairest coin strategy (type B when moving is free) uses it to switch between its two kinds of readings
+# which strategy picks the next cell to go to
 def pick_target(ship, knowledge, pos, detector, setting, strategy, readings, free_moves):
     if detector == "A" and strategy == "baseline":
         return strategies.baseline_a(ship, knowledge, pos)
