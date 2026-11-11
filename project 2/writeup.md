@@ -4,35 +4,38 @@ Rahul Rajkumar (NetID: rr1437)
 
 ## 1. The setup, and the range of k and alpha
 
-I built Project 2 on top of my Project 1 code. The ship is generated exactly the
-same way (it's the same `ship.py`, so trial $i$ gives the same ship as trial $i$
-in Project 1), the LocatorBot walks from cell to cell with the same BFS, and the
-BFS distance map from Project 1 gives the number of moves from the LocatorBot to
-every cell. Each trial puts the LocatorBot and the LostBot in two random open
-cells, and the LostBot never moves. The LocatorBot only finds the LostBot by
-running the detector in its cell, so every search ends with one detector use,
-and the cost of a search is the number of moves plus half the number of detector
-uses. In my Project 1 writeup I said I wanted to use numpy 2D arrays and
-parallelization next time, so this time the knowledge base is a numpy array, and
-the experiments run one search on each core of the computer at the same time.
+I built Project 2 on top of my Project 1 code. The ship is made the same way,
+with the same `ship.py`, so trial $i$ gives the same ship as in Project 1. The
+LocatorBot moves with the same BFS, and the BFS distance map tells it how many
+moves it takes to reach every cell. In each trial, the LocatorBot and the
+LostBot start in two random open cells, and the LostBot never moves. The
+LocatorBot only finds the LostBot by running the detector in the LostBot's
+cell. The cost of a search is the number of moves plus half the number of
+detector uses. In my Project 1 writeup I said I wanted to try numpy arrays and
+running experiments in parallel, so this time the knowledge base is a numpy
+array, and the experiments run one search on each core at the same time.
 
-**The range of k and alpha (the question for analysis on page 1).** With
-$k = 0$ the square is just the LocatorBot's own cell, so the detector says
-nothing new, and with $k \ge D - 1$ the square covers the whole ship from
-anywhere and always pings, so it also says nothing. On a 50 by 50 ship, $k = 25$
-already covers almost the whole ship from the middle, so I tested $k$ from 1 to
-25. $k$ sets the sensitivity like this: a small square only pings when the
-LostBot is close but then pins it down to a few cells, and a big square pings
-from far away but only says it's somewhere in a big area.
+**The range of k and alpha (the question for analysis on page 1).**
 
-For type B, the chance of a ping is $e^{-\alpha(d-1)}$, which is 0.5 at a
-distance of $d = 1 + \ln 2 / \alpha$, and distances on a 50 by 50 ship go up to
-about 69. At $\alpha = 0.01$ that distance is 70, so the detector pings almost
-everywhere and a ping says very little. At $\alpha = 3$ it's 1.23, so it only
-pings right next to the LostBot and a no ping says very little. So I tested 12
-values of $\alpha$ from 0.01 to 3, spaced out on a log scale. $\alpha$ sets how
-fast the detector goes cold with distance (Figure 1): a small $\alpha$ reaches
-far but is fuzzy, and a big $\alpha$ is precise but only works up close.
+For type A, $k$ is how big the square is. With $k = 0$, the square is only the
+LocatorBot's own cell, so the detector tells us nothing new. With
+$k \ge D - 1$, the square covers the whole ship from anywhere, so it always
+pings and also tells us nothing. On a 50 by 50 ship, $k = 25$ already covers
+almost the whole ship from the middle, so I tested $k$ from 1 to 25. A small
+square only pings when the LostBot is close, but then we know it's in one of a
+few cells. A big square pings from far away, but then we only know it's
+somewhere in a big area. That's how $k$ sets the sensitivity.
+
+For type B, the chance of a ping is $e^{-\alpha(d-1)}$. This chance drops to
+0.5 at a distance of $d = 1 + \ln 2 / \alpha$, and the distances on a 50 by 50
+ship go up to about 69. At $\alpha = 0.01$, it only drops to 0.5 at a distance
+of 70, so the detector pings almost everywhere and a ping tells us very little.
+At $\alpha = 3$, it drops to 0.5 at a distance of 1.23, so the detector only
+pings right next to the LostBot and a no ping tells us very little. So I tested
+12 values of $\alpha$ between 0.01 and 3, spread out on a log scale. $\alpha$
+sets how fast the detector goes cold as the LostBot gets further away (Figure
+1). A small $\alpha$ reaches far but is fuzzy, and a big $\alpha$ is sharp but
+only works up close.
 
 ![Figure 1](plots/ping_chance.png)
 
@@ -40,69 +43,78 @@ far but is fuzzy, and a big $\alpha$ is precise but only works up close.
 
 ## 2. Updating the knowledge base (Question 1)
 
-For type A, the knowledge base is $S$, the set of cells the LostBot could still
-be in, which starts as every open cell. The "square around $a$" is the
-$(2k+1)$ by $(2k+1)$ square centered on cell $a$, which is every cell whose row
-and column are both at most $k$ away from $a$'s. When the LocatorBot in cell $a$
-runs the detector and it doesn't say "found":
+**Type A.** The knowledge base is $S$, the set of cells the LostBot could still
+be in. At the start, $S$ is every open cell. Say the LocatorBot is in cell $a$.
+The square around $a$ is every cell whose row and column are both at most $k$
+away from $a$'s. When it runs the detector and doesn't find the LostBot:
 
 - **ping:** new $S$ = the cells in $S$, without $a$, that are **inside** the square around $a$
 - **no ping:** new $S$ = the cells in $S$, without $a$, that are **outside** the square around $a$
 
-This is correct because the type A detector has no randomness: it pings exactly
-when the LostBot is in the square, and it would have said "found" if the
-LostBot was in $a$. So a cell gets crossed out exactly when "the LostBot is in
-this cell" contradicts one of the readings, like a proof by contradiction from
-class, and the real cell can never be crossed out since it agrees with every
-reading. It is also the same as a CSP with one variable (where the LostBot is)
-whose domain is every open cell: every reading is a constraint, and the update is
-just crossing out the values that break it. My code does exactly this: it goes
-through every cell and asks "if the LostBot was here, would the detector have
-said what it just said?", and if not, it crosses that cell out.
+This is right because the type A detector is never wrong. It pings exactly when
+the LostBot is inside the square, and it would have said "found" if the
+LostBot were in $a$. So a cell is only removed when the LostBot being there
+would go against a reading, like a proof by contradiction from class. The real
+cell is never removed, since it always agrees with every reading. It's also a
+CSP from class with one variable, where the LostBot is. Every open cell starts
+in its domain, every reading is a constraint, and the update removes the cells
+that break it. My code does exactly this. It goes through every cell and asks,
+"if the LostBot were here, would the detector have said what it just said?" If
+not, that cell is removed.
 
-**Example (type A).** Take a tiny 5 by 5 ship with every cell open, so $S$
-starts as all 25 cells, and $k = 1$ (a 3 by 3 square). Cells are (row, column).
+**Example (type A).** Take a 5 by 5 ship with every cell open and $k = 1$, so
+every square is 3 by 3. At the start, $S$ has all 25 cells. Cells are written
+as (row, column).
 
-- The LocatorBot is in the corner (0, 0) and gets **no ping**. Its square is
-  only 4 cells, since it's in the corner: (0, 0), (0, 1), (1, 0) and (1, 1). So
-  those 4 cells get crossed out (including (0, 0), where it's standing), and
-  $S$ has 21 cells left.
-- It moves to (3, 3) and gets a **ping**. Its square is the 9 cells with rows
-  and columns 2 to 4. Every cell outside that square gets crossed out, and so
-  does (3, 3) itself, since the detector didn't say found. So $S$ has 8 cells
-  left: (2, 2), (2, 3), (2, 4), (3, 2), (3, 4), (4, 2), (4, 3) and (4, 4).
+1. The LocatorBot is in the corner (0, 0) and gets no ping. In the corner, its
+   square is just 4 cells, (0, 0), (0, 1), (1, 0) and (1, 1). All 4 are
+   removed, so 21 cells are left.
+2. It moves to (3, 3) and gets a ping. Its square there is the 9 cells with
+   rows and columns from 2 to 4. Every cell outside that square is removed, and
+   so is (3, 3) itself, since the detector didn't say found. That leaves 8
+   cells, (2, 2), (2, 3), (2, 4), (3, 2), (3, 4), (4, 2), (4, 3) and (4, 4).
 
-For type B, the knowledge base is $P(b)$, the probability that the LostBot is in
-cell $b$, which starts as $1/N$ for each of the $N$ open cells. When the
-LocatorBot in cell $a$ runs the detector, doesn't find the LostBot and gets the
-reading $r$ (ping or no ping), it first sets $P(a) = 0$ and then updates every
-cell with
+**Type B.** The knowledge base is $P(b)$, the chance that the LostBot is in
+cell $b$. At the start, every open cell has the same chance, $1/N$ for $N$
+open cells. When the LocatorBot in cell $a$ runs the detector and doesn't find
+the LostBot, it first sets $P(a) = 0$, since the detector would have said
+"found". Then, for the reading $r$ (ping or no ping), it updates every cell with
+Bayes' rule:
 
-$$P(b \mid r) = \frac{P(b) \, P(r \mid b)}{\sum_{b'} P(b') \, P(r \mid b')}, \qquad P(\text{ping} \mid b) = e^{-\alpha (d(a, b) - 1)}, \qquad P(\text{no ping} \mid b) = 1 - e^{-\alpha (d(a, b) - 1)}$$
+$$P(b \mid r) = \frac{P(b) \, P(r \mid b)}{\sum_{b'} P(b') \, P(r \mid b')}$$
 
-where $d(a, b)$ is the euclidean distance. In words: the new chance of cell $b$
-is the old chance of $b$, times the chance of getting this reading if the
-LostBot was in $b$, divided by the total of that over every cell (so everything
-adds up to 1 again). This is Bayes' theorem, exactly like
-the two coins example from class: the prior is the old knowledge base, the
-reading is the data, and the bottom is $P(r)$, found by adding up the top over
-every cell (marginalization). Not finding the LostBot in $a$ is also a reading,
-whose chance is 0 if the LostBot is in $a$ and 1 anywhere else, which is why
-$P(a)$ goes to 0. As a Bayesian network, the LostBot's location is the parent of
-every reading, and the readings don't affect each other once you know the
-location, since the detector's randomness is new each time (just like flipping
-the same mystery coin twice). So the probability after many readings is
-$P(b) \prod_i P(r_i \mid b)$ divided by its sum, and doing one reading at a time
-gives the exact same answer. I checked this in code too: updating one reading at
-a time, all at once, and in reverse order all gave the same knowledge base. One
-thing worth noticing: when $d = 1$ the chance of a ping is 1, so a "no ping"
-completely rules out the 4 cells next to the LocatorBot.
+where $P(\text{ping} \mid b) = e^{-\alpha (d(a, b) - 1)}$,
+$P(\text{no ping} \mid b) = 1 - e^{-\alpha (d(a, b) - 1)}$, and $d(a, b)$ is
+the euclidean distance between $a$ and $b$. In words:
 
-**Example (type B).** Take a tiny ship that is just 4 open cells in a row,
-cells 1 to 4, with $\alpha = 1$. At the start each cell has a chance of 1/4.
-The LocatorBot is in cell 1 and runs the detector, and it doesn't say found, so
-cell 1 goes to 0. Cells 2, 3 and 4 are 1, 2 and 3 cells away, so their chances
-of a ping are $e^{0} = 1$, $e^{-1} = 0.368$ and $e^{-2} = 0.135$.
+**new chance of b** = (old chance of b × chance of this reading if the LostBot is in b) ÷ (that same product added up over every cell)
+
+Dividing by the total on the bottom makes all the chances add up to 1 again.
+The $b'$ on the bottom just means "every cell, one at a time".
+
+This is right because it's Bayes' theorem, the same as the two coins example
+from class. The old knowledge base is the prior, the reading is the data, and
+the bottom is the total chance of getting that reading, found by
+marginalization. It's also a small Bayesian network with the same shape as
+Coin → Flip 1, Flip 2 from class. The LostBot's cell is the hidden parent, and
+every reading is a child. The readings don't affect each other once you know the
+LostBot's cell, since the detector flips a new coin every time. So I can update
+one reading at a time, and the order doesn't matter. I checked this in code, and
+updating one reading at a time, all at once, and in reverse order all gave the
+same knowledge base. One more thing worth noticing: right next to the LocatorBot
+($d = 1$) the chance of a ping is 1, so a no ping rules out those 4 cells
+completely.
+
+**Example (type B).** Take a tiny ship that's just 4 cells in a row, cells 1 to
+4, with $\alpha = 1$.
+
+1. At the start, each cell has a chance of 1/4.
+2. The LocatorBot is in cell 1 and doesn't find the LostBot, so cell 1 goes
+   to 0.
+3. Cells 2, 3 and 4 are 1, 2 and 3 cells away, so their chances of a ping are
+   $e^{0} = 1$, $e^{-1} = 0.368$ and $e^{-2} = 0.135$.
+4. Each cell's 1/4 is multiplied by the chance of the reading it got, then
+   divided by the total.
 
 | | cell 2 | cell 3 | cell 4 | total |
 |---|---|---|---|---|
@@ -111,56 +123,55 @@ of a ping are $e^{0} = 1$, $e^{-1} = 0.368$ and $e^{-2} = 0.135$.
 | **no ping**: 1/4 times (1 minus the ping chance) | 0 | 0.158 | 0.216 | 0.374 |
 | new chance (divide by the total) | 0 | 0.422 | 0.578 | 1 |
 
-So a ping makes the closest cell the most likely one (0.665), and a no ping
-rules out cell 2 completely (it's right next to us, so it would have pinged for
-sure) and pushes the chance to the far end of the row.
+A ping makes cell 2, the closest one, the most likely (0.665). A no ping rules
+out cell 2 completely, since it would have pinged for sure, and moves the
+chance to the far end of the row.
 
 ## 3. My strategies (Question 2)
 
-The baselines are reasonable, so instead of just tuning them, I looked at the
-problem through ideas from other parts of the class, and kept each strategy to
-one simple rule so it's clear what it's doing and why. Before picking these two,
-I tried a few other ideas from class in quick tests on a small number of ships:
-hill climbing the reading spot (local search) for type A, and for type B,
-sampling a target cell from the probabilities (sampling from the approximate
-inference lecture) and a "treasure map" built with the $U^*_T$ recursion from
-the MDP lecture. They all beat the baselines too, but the two below were the
-simplest to explain and the most different from what the baselines do.
+The baselines are reasonable, so instead of just tuning them, I looked for ideas
+from other parts of the class and kept each strategy to one simple rule. Before
+picking these two, I tried a few other class ideas in quick tests. For type A I
+tried hill climbing the reading spot (local search), and for type B I tried
+picking a random target cell using the probabilities (sampling) and a "treasure
+map" built with the $U^*_T$ recursion from the MDP lecture. They also beat the
+baselines, but the two below were the simplest to explain and the most
+different from the baselines.
 
-**Type A: the detector as the MIN player (minimax).** In the game trees from
-class, MAX picks the move whose worst case is the best, because it assumes MIN
-will always answer in the way that's worst for MAX. I treat the search the same
-way: the LocatorBot is MAX and picks where to run the detector, and the detector
-is MIN and "picks" the answer. For a spot $x$, let $n_{in}$ be the possible
-cells inside its square (not counting $x$ itself) and $n_{out}$ the possible
-cells outside it. A ping crosses out the $n_{out}$ cells and a no ping crosses
-out the $n_{in}$ cells, so whatever the answer is, the reading is sure to cross
-out
+**Type A: minimax.** In the game trees from class, the max player picks the
+move whose worst case is the best, because it assumes the min player will
+always answer in the worst way for it. I treat the search the same way. The
+LocatorBot is the max player, since it picks where to run the detector, and the
+detector is the min player, since it "picks" the answer.
+
+For any spot $x$, a ping removes every possible cell outside its square, and a
+no ping removes every possible cell inside it. So whatever the answer is, a
+reading at $x$ is sure to remove at least the smaller of those two groups:
 
 $$\text{sure}(x) = [x \in S] + \min(n_{in}, n_{out})$$
 
-cells, where $[x \in S]$ is 1 if the LostBot could be in $x$ (then $x$ is gone
-either way: the detector either says found or crosses it out) and 0 if not. The
-bot goes to the spot with the best $\text{sure}(x) / (w(x) + \tfrac{1}{2})$,
-where $w(x)$ is the number of moves to get there with BFS and the
-$\tfrac{1}{2}$ is the detector use, breaking ties by the closest spot. So it uses
-everything in its knowledge base: which cells are still possible, where they are
-compared to every spot's square, and how far away every spot is.
+Here $n_{in}$ is the number of possible cells inside the square, not counting
+$x$, and $n_{out}$ is the number outside it. $[x \in S]$ is 1 if the LostBot
+could be in $x$ itself, since then $x$ is removed either way, and 0 if not. The
+bot goes to the spot with the best score
 
-This one rule acts differently before and after the first ping without me having
-to tell it to. Before a ping, a square full of unsearched cells has a small
-inside and a huge outside, so the worst case is "no ping", and the best spot is
-the one whose square holds the most unsearched cells for its cost. That's
-usually a spot just past the edge of what's already been searched. The baseline
-walks to the nearest possible cell instead, which is right on that edge, so about
-half of every square it checks was already searched. After a ping, every
-possible cell is inside one square, so the best spot is the one whose square
-cuts them in half, since then neither answer can be bad. That's binary search:
-each reading halves the possible cells, while the baseline goes back to checking
-the nearest cell one at a time. The best spot is often a cell where the LostBot
-can't even be, which the baseline never considers. I used the worst case instead
-of the average because a reading that splits the cells evenly is good whatever
-the answer is, while a lopsided reading is only good if we get lucky.
+$$\text{score}(x) = \frac{\text{sure}(x)}{w(x) + \tfrac{1}{2}}$$
+
+where $w(x)$ is the number of moves to get there (from BFS) and the
+$\tfrac{1}{2}$ is the detector use. Ties go to the closest spot.
+
+This one rule acts differently before and after the first ping, without me
+telling it to. Before a ping, the inside of a fresh square is small compared to
+the rest of the ship, so the score is about how many unsearched cells the
+square holds. The best spot is usually just past the edge of what's already
+been searched. The baseline reads right on that edge, so about half its square
+was already searched. After a ping, every possible cell is inside one square,
+so the best spot is one whose square cuts them in half, since then neither
+answer is bad. That's binary search, while the baseline goes back to checking
+the nearest cell one at a time. The best spot is often a cell where the
+LostBot can't even be, which the baseline never considers. I used the worst
+case instead of the average because an even split is good whatever the answer
+is, while a lopsided split is only good if we get lucky.
 
 **Example (type A).** Here's a simple example of how the score works. Take a
 5 by 5 ship with every cell open and $k = 1$, so every square is 3 by 3.
@@ -184,35 +195,41 @@ the answer is, while a lopsided reading is only good if we get lucky.
 So for the same 2 moves, my strategy learns more, because its square isn't
 wasted on cells that were already searched.
 
-**Type B: warmer / colder (hill climbing).** For the type B detector I used the
-game "warmer / colder" with hill climbing from the local search lecture. The
-"warmth" of a cell $x$ is the chance that running the detector there pings (or
-finds the LostBot), which I get with marginalization, like $P(H)$ in the two
+**Type B: warmer or colder (hill climbing).** For type B, I used hill climbing
+from the local search notes, like playing warmer or colder. In hill climbing,
+you look at the states next to you and move to the best one if it's better than
+where you are. Here, the state is the LocatorBot's cell, the states next to it
+are the open cells next to it, and better means warmer.
+
+The warmth of a cell $x$ is the chance that running the detector there pings,
+or finds the LostBot. I get it with marginalization, like $P(H)$ in the two
 coins example:
 
 $$\text{warmth}(x) = \sum_{b} P(b) \, P(\text{ping} \mid \text{LocatorBot in } x, \text{LostBot in } b)$$
 
-where the LostBot's own cell counts as 1, since there the detector says found,
-which is even better than a ping. In every cell, the bot runs the detector and
-updates its knowledge base, then it only looks at the cells next to it. If one
-of them is warmer than where it is, it steps to the warmest one (hill climbing:
-move to the best neighbor if it's better than where you are). If none of them
-are warmer, the bot is at the top of a hill (a local maximum), so it walks to
-the most likely cell like the baseline does, which works like a restart. Every
-reading changes the hill: a ping makes the cells around the bot warmer so it
-keeps climbing towards them, and a no ping makes them colder and pushes it away.
-So it uses the whole probability map (through the warmth) and $\alpha$ to decide
-between the cells next to it.
+The LostBot's own cell counts as 1, since there the detector says found, which
+is even better than a ping. Each step works like this:
+
+1. Run the detector in the current cell and update the knowledge base.
+2. Work out the warmth of the current cell and of the open cells next to it.
+3. If a cell next to it is warmer, step to the warmest one.
+4. If none are warmer, the bot is at the top of a hill. Then it walks to the
+   most likely cell, like the baseline. This is a kind of restart, but not a
+   random one like in class, since it restarts where the LostBot most likely is.
+
+Unlike hill climbing in class, the hill here changes after every reading. A
+ping makes the cells around the bot warmer, so it keeps climbing towards them.
+A no ping makes them colder and pushes it away.
 
 This should beat the baseline because the baseline makes one decision and then
-walks the whole way without running the detector. After a "no ping", the most
+walks the whole way without running the detector. After a no ping, the most
 likely cell is the one furthest away, so the baseline walks all the way across
 the ship and learns nothing on the way. Mine runs the detector in every cell it
-steps on (half a move each) and lets every reading change where it goes next.
-Warmth is also smoother than the probabilities themselves: a cell is warm if a
+steps on, which costs half a move each, and lets every reading change where it
+goes next. Warmth is also smoother than the probabilities. A cell is warm if a
 lot of probability is near it, not just in it, so the bot heads for the area
-where the LostBot probably is, instead of one cell that's only slightly more
-likely than the cells around it.
+where the LostBot probably is, not just one cell that's slightly more likely
+than the cells around it.
 
 **Example (type B).** Take a tiny ship that's just 4 cells in a row, cells 1
 to 4, with $\alpha = 1$.
@@ -235,11 +252,11 @@ when the LostBot really is in cell 4, since walking straight there is right,
 but on a real ship the walks are much longer, so checking along the way saves a
 lot more (Section 5).
 
-**Scoring rules, and my TA's advice.** When I sent my plan to my TA, they
-said that when choosing where to run the detector, I should think about what the
-rest of the search will cost, not just how much the knowledge base shrinks, and
-that I should write the scoring rule down and compare it with the baselines. So
-every strategy here, the baselines included, comes down to one score:
+**Scoring rules, and my TA's advice.** When I sent my plan to my TA, they said
+I should think about what the rest of the search will cost, not just how much
+the knowledge base shrinks, and that I should write down the scoring rule and
+compare it with the baselines. So here is every strategy's score, the baselines
+included:
 
 | strategy | where it can run the detector next | the score it picks the best of |
 |---|---|---|
@@ -250,34 +267,37 @@ every strategy here, the baselines included, comes down to one score:
 | my type A, free moves | any open cell | $\text{sure}(x)$ |
 | my type B, free moves | any open cell | warmth closest to 0.5, every other reading $P(b)$ |
 
-Each baseline only looks at one side of the TA's advice. Baseline A only looks
-at cost (the closest possible cell) and never at how much a reading there would
-cross out, which is why half its square is usually already searched. Baseline B
-only looks at the knowledge base (the most likely cell) and never at the cost of
-getting there, which is why it walks across the ship after every no ping. My
-type A score puts both sides in one number: the top is how much the knowledge
-base is sure to shrink, and the bottom is what it costs to get that, so a spot
-that crosses out a lot of cells isn't picked if it's too far away. I used the
-worst case instead of the expected amount, since it's simpler and never counts
-on getting lucky. For type B, I kept the cost side simple instead of computing
-it: every step costs the same (one move and one reading), so the score only
-has to compare the warmth of the cells next to it, and the bot never pays for a
-long walk without learning anything on the way. When moving is free, the cost
-side is 0, so both scores are only about how much a reading tells us. Sections 4
-to 7 compare every strategy with its baseline.
+Each baseline only looks at one side of this. Baseline A only looks at cost. It
+goes to the closest possible cell and never checks how much a reading there
+would remove, which is why about half its square is usually already searched.
+Baseline B only looks at the knowledge base. It goes to the most likely cell
+and never checks how far away it is, which is why it walks across the ship
+after every no ping.
+
+My type A score puts both sides in one number. The top is how much the
+knowledge base is sure to shrink, and the bottom is what that costs, so a spot
+that removes a lot of cells isn't picked if it's too far away. I used the worst
+case instead of the average, since it's simpler and never counts on getting
+lucky. For type B, I kept the cost side simple instead of computing it. Every
+step costs the same, one move and one reading, so the score only has to
+compare warmth, and the bot never pays for a long walk without learning
+anything. When moving is free, the cost side is 0, so both scores are only
+about how much a reading tells us. Sections 4 to 7 compare every strategy with
+its baseline.
 
 ## 4. Type A: baseline vs my strategy (Question 3)
 
-I used 50 by 50 ships, the same size as Project 1. I wrote my code with simple
-for loops so it's easy to follow, but that makes it slow, so I ran the
-experiments with a faster copy that does the same math on whole numpy arrays at
-once (I checked that it gives exactly the same numbers, search by search). Even
-then, the whole experiment takes about 30 minutes on 4 cores, and a bigger ship
-has more cells to check after every reading and longer searches, so it would
-take hours. I ran 200
-searches for each strategy at each $k$, and both strategies search the exact
-same 200 ships with the same starting cells, so the difference between them
-comes from their decisions and not from easier ships.
+I used 50 by 50 ships, the same size as Project 1. I ran 200 searches for each
+strategy at each $k$. Both strategies search the exact same 200 ships from the
+same starting cells, so any difference comes from their decisions, not from
+easier ships.
+
+I wrote my code with simple for loops so it's easy to follow, but that makes it
+slow. So I ran the experiments with a faster copy that does the same math on
+whole numpy arrays at once, and I checked that it gives exactly the same
+numbers, search by search. Even then, the whole experiment takes about 30
+minutes on 4 cores. A bigger ship has more cells to check after every reading
+and longer searches, so it would take hours.
 
 ![Figure 2](plots/cost_vs_k.png)
 
@@ -300,33 +320,34 @@ comes from their decisions and not from easier ships.
 | 20 | 221.3 | 141.7 | 36.0 |
 | 25 | 284.6 | 171.0 | 39.9 |
 
-My strategy is cheaper at every $k$, from 9% at $k = 4$ up to 40% at
-$k = 25$. It isn't cheaper on every single search (it's cheaper on 56% to 64%
-of them, depending on $k$), but on average it always wins. For small $k$ both
-strategies are expensive, since a tiny square means sweeping most of the ship,
-and almost all the cost is walking (at $k = 1$ the baseline makes 761 moves and
-mine makes 676). Mine still saves 9% to 18% there, because it reads past the
-edge of what's been searched instead of right on it. For big $k$ the baseline
-gets more expensive again (285 at $k = 25$), because the first reading usually
-pings and then it checks cells one at a time. It runs the detector 122 times at
-$k = 25$, while mine only needs about 13, since after the ping every reading
-cuts the possible cells in half.
+My strategy is cheaper at every $k$, from 9% cheaper at $k = 4$ to 40% cheaper
+at $k = 25$. It isn't cheaper on every single search, only on 56% to 64% of
+them depending on $k$, but it always wins on average.
 
-The most interesting $k$ regime is from about $k = 8$ to $k = 15$ (about
-$D/6$ to $D/3$). That's where both strategies are cheapest: mine is lowest at
+For small $k$, both strategies are expensive. A tiny square means sweeping most
+of the ship, so almost all the cost is walking. At $k = 1$, the baseline makes
+761 moves and mine makes 676. Mine still saves 9% to 18% there, because it
+reads past the edge of what's been searched instead of right on it.
+
+For big $k$, the baseline gets expensive again (285 at $k = 25$). The first
+reading usually pings, and then it checks cells one at a time, so it runs the
+detector 122 times. Mine only needs about 13 readings, since after the ping
+every reading cuts the possible cells in half.
+
+The most interesting $k$ regime is about $k = 8$ to $k = 15$, which is about
+$D/6$ to $D/3$. That's where both strategies are cheapest. Mine is lowest at
 $k = 15$ (124.6) and the baseline is lowest at $k = 12$ (160.5). It's also
-where splitting the possible cells in half starts to really pay off, so the gap
-between the two strategies starts to grow (20% at $k = 12$ and 28% at
-$k = 15$).
+where cutting the possible cells in half starts to really pay off, so the gap
+starts to grow, from 20% at $k = 12$ to 28% at $k = 15$.
 
 ## 5. Type B: baseline vs my strategy (Question 4)
 
-I picked the values of $\alpha$ from where the detector stops being useful on
-both ends (Section 1): at $\alpha = 0.01$ it pings almost everywhere, and at
-$\alpha = 3$ it only pings right next to the LostBot. Since what matters is how
-fast the ping chance falls off, and that changes the most for small $\alpha$, I
-spaced the values out on a log scale instead of evenly, and I checked that the
-cost goes back up at both ends of the range, so the best $\alpha$ is inside it.
+I picked the values of $\alpha$ where the detector stops being useful on both
+ends (Section 1). At $\alpha = 0.01$ it pings almost everywhere, and at
+$\alpha = 3$ it only pings right next to the LostBot. The ping chance changes
+the most for small $\alpha$, so I spread the values out on a log scale instead
+of evenly. I also checked that the cost goes back up at both ends, so the best
+$\alpha$ is inside the range.
 
 ![Figure 3](plots/cost_vs_alpha.png)
 
@@ -350,66 +371,68 @@ cost goes back up at both ends of the range, so the best $\alpha$ is inside it.
 | 3 | 9917.3 | 1795.8 | 81.9 |
 
 My strategy is 33% to 83% cheaper at every $\alpha$, and cheaper on 70% to 90%
-of the searches. Almost all of the baseline's cost is walking. After a "no
-ping", the most likely cell is the one furthest away, so it walks all the way
-across the ship without running the detector once on the way, and the bigger
-$\alpha$ is, the more often it doesn't ping. At $\alpha = 0.1$ the baseline
-makes 867 moves, while mine makes 277. Mine actually runs the detector more (65
-times vs 38), but that's the point: a reading only costs half a move, and every
-reading tells it which way is warmer.
+of the searches. Almost all of the baseline's cost is walking. After a no ping,
+the most likely cell is the furthest one, so it walks across the ship without
+running the detector once. The bigger $\alpha$ is, the more often it doesn't
+ping, so the more it walks. At $\alpha = 0.1$, the baseline makes 867 moves
+and mine makes 277. Mine actually runs the detector more, 65 times against 38,
+but that's the point. A reading only costs half a move, and every reading tells
+it which way is warmer.
 
 My strategy is cheapest at $\alpha = 0.1$ (309.3), and the baseline at
-$\alpha = 0.05$ (670.3). At $\alpha = 0.1$ the 50/50 distance is about 8
-cells, so moving one cell changes the warmth enough to tell which way to go.
-Mine helps the least at small $\alpha$ (33% cheaper at $\alpha = 0.01$): the
-detector pings from almost anywhere, so the warmth is almost the same in every
-cell, the hill is very flat, and the bot keeps reaching a "top" and
-walking to the most likely cell like the baseline. When I counted this on 15
-searches, 23% of its decisions at $\alpha = 0.01$ were a "top", compared to
-7% at $\alpha = 1$. For big $\alpha$ the
-detector only pings right next to the LostBot, so the search becomes checking
-cells almost one at a time, and the cost goes up to 1795.8 at $\alpha = 3$, but
-mine still avoids the baseline's long blind walks.
+$\alpha = 0.05$ (670.3). At $\alpha = 0.1$, the ping chance drops to 0.5 at
+about 8 cells away, so moving one cell changes the warmth enough to tell which
+way to go.
+
+Mine helps the least at small $\alpha$, only 33% cheaper at $\alpha = 0.01$.
+There, the detector pings from almost anywhere, so every cell is about as warm
+as the next and the hill is very flat. The bot keeps reaching a top and walking
+to the most likely cell, just like the baseline. When I counted this on 15
+searches, 23% of its decisions at $\alpha = 0.01$ were a top, compared to 7%
+at $\alpha = 1$. For big $\alpha$, the detector only pings right next to the
+LostBot, so the search turns into checking cells almost one at a time, and the
+cost goes up to 1795.8 at $\alpha = 3$. Mine still avoids the baseline's long
+blind walks.
 
 ## 6. Which detector is more efficient? (Question 5)
 
-At its most efficient setting, the type A detector is cheaper. With my
-strategies, type A costs 124.6 at $k = 15$ and type B costs 309.3 at
-$\alpha = 0.1$, so type A is about 60% cheaper (2.5 times). With the baselines
-the gap is even bigger (160.5 at $k = 12$ vs 670.3 at $\alpha = 0.05$).
+At their best settings, type A is cheaper. With my strategies, type A costs
+124.6 at $k = 15$ and type B costs 309.3 at $\alpha = 0.1$, so type A is about
+60% cheaper, or 2.5 times. With the baselines the gap is even bigger, 160.5 at
+$k = 12$ against 670.3 at $\alpha = 0.05$.
 
 ![Figure 4](plots/cost_breakdown.png)
 
 *Figure 4: Where the cost goes for each strategy at k = 15 and alpha = 0.1: the average number of moves, and half the average number of detector uses.*
 
-The reason is that a type A reading is certain: a ping or a no ping crosses
-cells out for good and is never wrong, so once it pings, every reading cuts the
-possible cells in half, and my strategy only needs about 13 readings in a whole
-search. A type B reading is a coin flip. A single ping doesn't prove the
-LostBot is close, and a no ping doesn't prove it's far, so the bot has to keep
-reading as it walks (65 readings at $\alpha = 0.1$) and it walks more too (277
-moves vs 118), since it figures out which way to go a step at a time. Figure 4
-shows this: most of the difference is the extra walking.
+The reason is that a type A reading is certain. A ping or a no ping removes
+cells for good and is never wrong, so after the first ping every reading cuts
+the possible cells in half, and my strategy only needs about 13 readings in a
+whole search. A type B reading is a coin flip. One ping doesn't prove the
+LostBot is close, and one no ping doesn't prove it's far. So the bot has to
+keep reading as it walks (65 readings at $\alpha = 0.1$), and it walks more too
+(277 moves against 118), since it works out which way to go one step at a time.
+Figure 4 shows that most of the difference is the extra walking.
 
 ## 7. When moving is free (Question 6)
 
-If only the detector costs anything, both of my strategies change, because the
-walking part of their decisions doesn't matter anymore.
+If only the detector costs anything, both of my strategies change, because
+walking doesn't matter anymore.
 
-For type A, my minimax strategy just drops the cost: it picks the spot anywhere
-on the ship that's sure to cross out the most cells, without dividing by the
-walk. That's basically "20 questions": every reading splits the possible cells
+For type A, my minimax strategy just drops the cost. It picks the spot anywhere
+on the ship that's sure to remove the most cells, without dividing by the walk.
+That's like playing 20 questions, where every reading splits the possible cells
 as close to half as it can.
 
-For type B, warmer / colder doesn't make sense anymore, since its whole point is
-to take small steps instead of long walks. So I changed it to a "fairest coin"
+For type B, warmer or colder doesn't make sense anymore, since its whole point
+is to take small steps instead of long walks. So I changed it to a fairest coin
 rule. A reading you can already guess teaches you nothing, like flipping a coin
 you know is double headed. So the bot runs the detector where the chance of a
-ping (the warmth) is closest to 50/50. But a fair coin far away can't tell apart
-cells that are right next to each other, and you can only find the LostBot by
-reading in its cell, so every other reading it checks the most likely cell
-instead, like the baseline. When moving is free, it can also run the detector in
-the same cell twice in a row if that's still the best spot.
+ping (the warmth) is closest to 0.5. But a fair coin far away can't tell apart
+cells that are right next to each other, and the only way to find the LostBot
+is to read in its cell. So every other reading, it checks the most likely cell
+instead, like the baseline. Since moving is free, it can also read in the same
+cell twice in a row if that's still the best spot.
 
 ![Figure 5](plots/free_moves_k.png)
 
@@ -429,49 +452,52 @@ the same cell twice in a row if that's still the best spot.
 | type B, $\alpha = 0.2$ | 18.3 | 35.3 | 20.5 |
 | type B, $\alpha = 2$ | 103.5 | 217.5 | 89.0 |
 
-For type A the change makes a big difference. My free moves strategy is 45% to
-90% cheaper than the baseline, and from $k = 15$ up it needs about 11.7
-readings (a cost of 5.9), which is close to $\log_2$ of the roughly 1,600 open
-cells, about 10.7 readings, which is what perfect binary search would need. The
-best $k$ also moves up: when walking is free, a bigger square is better since it
-can split the ship anywhere, so the cost keeps going down until $k = 15$ and
-then stays flat. The baseline is best at $k = 8$ (15.2) and gets worse after
-that, since it still checks cells one at a time after the first ping. My normal
+For type A, the change makes a big difference. My free moves strategy is 45% to
+90% cheaper than the baseline. From $k = 15$ up, it needs about 11.7 readings,
+a cost of 5.9. That's close to perfect binary search, which would need
+$\log_2$ of the roughly 1,600 open cells, about 10.7 readings. The best $k$
+also goes up. When walking is free, a bigger square is better since it can
+split the ship anywhere, so the cost keeps dropping until $k = 15$ and then
+stays flat. The baseline is best at $k = 8$ (15.2) and gets worse after that,
+since it still checks cells one at a time after the first ping. My normal
 strategy is already close (6.5 at $k = 20$), since it was already doing binary
 search after the first ping.
 
-For type B, to be honest, the fairest coin only partly worked. It's worse than
-the baseline for small $\alpha$ (45% to 67% more expensive for $\alpha \le
-0.05$, and 12% to 17% more for $\alpha$ from 0.1 to 0.3), about the same from
-$\alpha = 0.5$ to 1, and better for big $\alpha$ (10% to 15% cheaper for
-$\alpha \ge 1.5$). The reason is where the 50/50 spot is. It's about
-$1 + \ln 2 / \alpha$ cells away from where the LostBot probably is, which is 70
-cells at $\alpha = 0.01$, so the bot reads from the far side of the ship, and
-from that far away every likely cell is about the same distance, so the reading
-can't tell them apart and those readings are mostly wasted. For big $\alpha$
-the 50/50 spot is only 1 or 2 cells away from the likely area, so one fair coin
-tests a small group of cells at once, which beats checking one cell at a time
-like the baseline. My normal strategy (warmer / colder) costs 1.5 to 2.2 times as
-much as the baseline here, because it runs the detector on every step to save walking, which
+For type B, to be honest, the fairest coin only partly worked:
+
+- for $\alpha$ up to 0.05, it costs 45% to 67% more than the baseline
+- for $\alpha$ from 0.1 to 0.3, it costs 12% to 17% more
+- for $\alpha$ from 0.5 to 1, it's about the same
+- for $\alpha$ of 1.5 and up, it's 10% to 15% cheaper
+
+The reason is where the fair coin is. The spot where the ping chance is 0.5 is
+about $1 + \ln 2 / \alpha$ cells away from where the LostBot probably is. At
+$\alpha = 0.01$ that's 70 cells, so the bot reads from the far side of the
+ship. From that far away, all the likely cells are about the same distance, so
+the reading can't tell them apart and is mostly wasted. For big $\alpha$, the
+fair coin is only 1 or 2 cells from the likely area, so one reading tests a
+small group of cells at once, which beats checking one cell at a time like the
+baseline. My normal warmer or colder strategy costs 1.5 to 2.2 times as much as
+the baseline here, because it reads on every step to save walking, and walking
 is now free.
 
-The type A detector is still the more efficient one, and by more than before:
-5.9 at $k = 15$ (or more) against 18.3 for the baseline at $\alpha = 0.2$ (the
-best type B result here, my fairest coin gets 20.5 there), about 3 times
-cheaper. With free moves, the only thing that matters is how much each reading
-tells you, and a certain reading that can split the ship in half is worth a lot
-more than a coin flip.
+Type A is still the more efficient detector, by even more than before. It costs
+5.9 at $k = 15$ and up, against 18.3 for the best type B result, which is the
+baseline at $\alpha = 0.2$ (my fairest coin gets 20.5 there). That's about 3
+times cheaper. With free moves, all that matters is how much each reading tells
+you, and a certain reading that can split the ship in half is worth a lot more
+than a coin flip.
 
 ## 8. What I learned
 
 The biggest surprise was how much one simple rule could do. My type A strategy
-is just "assume the detector gives the worst answer", but that one rule makes it
-read past the edge of what it searched before a ping, and do binary search after
-one, without me telling it about either. For type B, the baseline was really bad
-(up to almost 10,000 on average) only because it makes one decision and then
-walks blind. Playing warmer / colder and deciding again after every step made
-it 33% to 83% cheaper. The fairest coin taught me that "the reading you're
-least sure about" isn't always the best reading: it also has to be able to tell
-apart the cells you actually care about. All 14,400 searches take about 30
-minutes on 4 cores with the faster numpy copy of my code, and most of that is the
-fairest coin checking the warmth of every cell before every other reading.
+just assumes the detector gives the worst answer, but that one rule makes it
+read past the edge of what it searched before a ping, and do binary search
+after one, without me telling it to do either. For type B, the baseline was
+really bad, up to almost 10,000 on average, only because it makes one decision
+and then walks blind. Playing warmer or colder and deciding again after every
+step made it 33% to 83% cheaper. The fairest coin taught me that the reading
+you're least sure about isn't always the best one. It also has to be able to
+tell apart the cells you actually care about. All 14,400 searches take about 30
+minutes on 4 cores with the faster numpy copy of my code, and most of that time
+is the fairest coin checking the warmth of every cell.
