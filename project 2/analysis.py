@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from experiments import average
+
 # this file draws the charts that are used in the writeup from the tables that experiments.py saved,
 # run this after you run experiments and the charts get saved in the plots folder
 
@@ -67,11 +69,9 @@ def plot_cost_breakdown(results, best_k, best_alpha):
     reading_costs = []
     for detector, setting in [("A", best_k), ("B", best_alpha)]:
         for strategy in ["baseline", "mine"]:
-            runs = results[(results["detector"] == detector) & (results["setting"] == setting)
-                           & (results["strategy"] == strategy) & (results["free_moves"] == False)]
             labels.append(f"Type {detector}\n{strategy}")
-            move_costs.append(runs["moves"].mean())
-            reading_costs.append(0.5 * runs["readings"].mean())
+            move_costs.append(average(results, detector, setting, strategy, False, "moves"))
+            reading_costs.append(0.5 * average(results, detector, setting, strategy, False, "readings"))
     x = np.arange(len(labels))
     plt.figure(figsize=(8, 5))
     plt.bar(x - 0.2, move_costs, width=0.4, color="#5c5c5c", label="moves")
@@ -83,9 +83,20 @@ def plot_cost_breakdown(results, best_k, best_alpha):
     save_chart("cost_breakdown.png")
 
 
+# the k (or alpha) in the first column of the table where my strategy had the lowest average cost
+def lowest_setting(table):
+    settings = list(table[table.columns[0]])
+    costs = list(table["mine"])
+    best = 0
+    for i in range(len(costs)):
+        if costs[i] < costs[best]:
+            best = i
+    return settings[best]
+
+
 # reads the tables and draws every chart
 def main():
-    results = pd.read_csv("results/main.csv")
+    results = pd.read_csv("results/main.csv").values.tolist()   # every search as a list, like in experiments.py
     type_a = pd.read_csv("results/type_a_cost.csv")
     type_b = pd.read_csv("results/type_b_cost.csv")
     type_a_free = pd.read_csv("results/type_a_free_moves.csv")
@@ -105,8 +116,8 @@ def main():
                "free_moves_alpha.png", log_x=True)
 
     # the k and alpha where my strategy had the lowest average cost
-    best_k = int(type_a["k"][type_a["mine"].idxmin()])
-    best_alpha = type_b["alpha"][type_b["mine"].idxmin()]
+    best_k = int(lowest_setting(type_a))
+    best_alpha = lowest_setting(type_b)
     plot_cost_breakdown(results, best_k, best_alpha)
 
 

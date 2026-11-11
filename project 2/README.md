@@ -21,9 +21,15 @@ search is (number of moves) + 1/2 (number of detector uses).
 Needs Python 3 with `numpy`, `pandas` and `matplotlib`. Run everything from this folder:
 
 ```bash
-python experiments.py     # every search, about 30 minutes on 4 cores
+python experiments.py     # every search (slow, see below)
 python analysis.py        # the charts, a few seconds
 ```
+
+The code uses simple for loops so it's easy to read, which makes `experiments.py` very slow (the
+fairest coin strategy checks every cell before every other reading, so all the searches would take
+days). The results in `results/` were made with a faster copy of the same code that does the same
+math on whole numpy arrays at once, and it gives exactly the same numbers: I checked every
+function on the same inputs, and reran 168 full searches and got the same moves, readings and cost.
 
 ## The results
 

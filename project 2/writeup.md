@@ -13,8 +13,8 @@ cells, and the LostBot never moves. The LocatorBot only finds the LostBot by
 running the detector in its cell, so every search ends with one detector use,
 and the cost of a search is the number of moves plus half the number of detector
 uses. In my Project 1 writeup I said I wanted to use numpy 2D arrays and
-parallelization next time, so this time the knowledge base is a numpy array (an
-update to every cell is one line instead of two loops), and the experiments run
+parallelization next time, so this time the knowledge base is a numpy array, and
+the experiments run
 one search on each core of the computer at the same time.
 
 For the type A detector, $k = 0$ makes the square just the LocatorBot's own
@@ -45,24 +45,37 @@ big $\alpha$ is precise but only works up close.
 
 ## 2. Updating the knowledge base (Question 1)
 
-For type A, the knowledge base is the set $S$ of cells the LostBot could still
-be in, which starts as every open cell. Let $\text{Sq}_k(a)$ be the
-$(2k+1) \times (2k+1)$ square around cell $a$, which is every cell $b$ where
-$|b_{row} - a_{row}| \le k$ and $|b_{col} - a_{col}| \le k$. When the
-LocatorBot in cell $a$ runs the detector and it doesn't say "found":
+For type A, the knowledge base is $S$, the set of cells the LostBot could still
+be in, which starts as every open cell. The "square around $a$" is the
+$(2k+1)$ by $(2k+1)$ square centered on cell $a$, which is every cell whose row
+and column are both at most $k$ away from $a$'s. When the LocatorBot in cell $a$
+runs the detector and it doesn't say "found":
 
-$$S \leftarrow \begin{cases} (S \setminus \{a\}) \cap \text{Sq}_k(a) & \text{if it pings} \\ (S \setminus \{a\}) \setminus \text{Sq}_k(a) & \text{if it doesn't ping} \end{cases}$$
+- **ping:** new $S$ = the cells in $S$, without $a$, that are **inside** the square around $a$
+- **no ping:** new $S$ = the cells in $S$, without $a$, that are **outside** the square around $a$
 
 This is correct because the type A detector has no randomness: it pings exactly
-when the LostBot is in $\text{Sq}_k(a)$, and it would have said "found" if the
+when the LostBot is in the square, and it would have said "found" if the
 LostBot was in $a$. So a cell gets crossed out exactly when "the LostBot is in
 this cell" contradicts one of the readings, like a proof by contradiction from
 class, and the real cell can never be crossed out since it agrees with every
 reading. It is also the same as a CSP with one variable (where the LostBot is)
 whose domain is every open cell: every reading is a constraint, and the update is
-just crossing out the values that break it. To check my code, I compared it with
-a brute force version that tests every cell against every reading one by one,
-and they always matched.
+just crossing out the values that break it. My code does exactly this: it goes
+through every cell and asks "if the LostBot was here, would the detector have
+said what it just said?", and if not, it crosses that cell out.
+
+**Example (type A).** Take a tiny 5 by 5 ship with every cell open, so $S$
+starts as all 25 cells, and $k = 1$ (a 3 by 3 square). Cells are (row, column).
+
+- The LocatorBot is in the corner (0, 0) and gets **no ping**. Its square is
+  only 4 cells, since it's in the corner: (0, 0), (0, 1), (1, 0) and (1, 1). So
+  those 4 cells get crossed out (including (0, 0), where it's standing), and
+  $S$ has 21 cells left.
+- It moves to (3, 3) and gets a **ping**. Its square is the 9 cells with rows
+  and columns 2 to 4. Every cell outside that square gets crossed out, and so
+  does (3, 3) itself, since the detector didn't say found. So $S$ has 8 cells
+  left: (2, 2), (2, 3), (2, 4), (3, 2), (3, 4), (4, 2), (4, 3) and (4, 4).
 
 For type B, the knowledge base is $P(b)$, the probability that the LostBot is in
 cell $b$, which starts as $1/N$ for each of the $N$ open cells. When the
@@ -72,7 +85,10 @@ cell with
 
 $$P(b \mid r) = \frac{P(b) \, P(r \mid b)}{\sum_{b'} P(b') \, P(r \mid b')}, \qquad P(\text{ping} \mid b) = e^{-\alpha (d(a, b) - 1)}, \qquad P(\text{no ping} \mid b) = 1 - e^{-\alpha (d(a, b) - 1)}$$
 
-where $d(a, b)$ is the euclidean distance. This is Bayes' theorem, exactly like
+where $d(a, b)$ is the euclidean distance. In words: the new chance of cell $b$
+is the old chance of $b$, times the chance of getting this reading if the
+LostBot was in $b$, divided by the total of that over every cell (so everything
+adds up to 1 again). This is Bayes' theorem, exactly like
 the two coins example from class: the prior is the old knowledge base, the
 reading is the data, and the bottom is $P(r)$, found by adding up the top over
 every cell (marginalization). Not finding the LostBot in $a$ is also a reading,
@@ -86,6 +102,23 @@ gives the exact same answer. I checked this in code too: updating one reading at
 a time, all at once, and in reverse order all gave the same knowledge base. One
 thing worth noticing: when $d = 1$ the chance of a ping is 1, so a "no ping"
 completely rules out the 4 cells next to the LocatorBot.
+
+**Example (type B).** Take a tiny ship that is just 4 open cells in a row,
+cells 1 to 4, with $\alpha = 1$. At the start each cell has a chance of 1/4.
+The LocatorBot is in cell 1 and runs the detector, and it doesn't say found, so
+cell 1 goes to 0. Cells 2, 3 and 4 are 1, 2 and 3 cells away, so their chances
+of a ping are $e^{0} = 1$, $e^{-1} = 0.368$ and $e^{-2} = 0.135$.
+
+| | cell 2 | cell 3 | cell 4 | total |
+|---|---|---|---|---|
+| **ping**: 1/4 times the ping chance | 0.25 | 0.092 | 0.034 | 0.376 |
+| new chance (divide by the total) | 0.665 | 0.245 | 0.090 | 1 |
+| **no ping**: 1/4 times (1 minus the ping chance) | 0 | 0.158 | 0.216 | 0.374 |
+| new chance (divide by the total) | 0 | 0.422 | 0.578 | 1 |
+
+So a ping makes the closest cell the most likely one (0.665), and a no ping
+rules out cell 2 completely (it's right next to us, so it would have pinged for
+sure) and pushes the chance to the far end of the row.
 
 ## 3. My strategies (Question 2)
 
@@ -166,9 +199,13 @@ likely than the cells around it.
 
 ## 4. Type A: baseline vs my strategy (Question 3)
 
-I used 50 by 50 ships, the same size as Project 1. The whole experiment already
-takes about 30 minutes on 4 cores, and a bigger ship has more cells to check
-after every reading and longer searches, so it would take hours. I ran 200
+I used 50 by 50 ships, the same size as Project 1. I wrote my code with simple
+for loops so it's easy to follow, but that makes it slow, so I ran the
+experiments with a faster copy that does the same math on whole numpy arrays at
+once (I checked that it gives exactly the same numbers, search by search). Even
+then, the whole experiment takes about 30 minutes on 4 cores, and a bigger ship
+has more cells to check after every reading and longer searches, so it would
+take hours. I ran 200
 searches for each strategy at each $k$, and both strategies search the exact
 same 200 ships with the same starting cells, so the difference between them
 comes from their decisions and not from easier ships.
@@ -186,12 +223,12 @@ comes from their decisions and not from easier ships.
 | 3 | 366.7 | 303.2 | 17.3 |
 | 4 | 268.8 | 245.5 | 8.7 |
 | 5 | 243.6 | 207.2 | 14.9 |
-| 6 | 223.8 | 184.4 | 17.6 |
+| 6 | 223.8 | 184.3 | 17.6 |
 | 8 | 175.2 | 157.5 | 10.1 |
 | 10 | 174.4 | 148.0 | 15.1 |
 | 12 | 160.5 | 128.2 | 20.1 |
 | 15 | 173.3 | 124.6 | 28.1 |
-| 20 | 221.3 | 141.6 | 36.0 |
+| 20 | 221.3 | 141.7 | 36.0 |
 | 25 | 284.6 | 171.0 | 39.9 |
 
 My strategy is cheaper at every $k$, from 9% at $k = 4$ up to 40% at
@@ -367,5 +404,5 @@ walks blind. Playing warmer / colder and deciding again after every step made
 it 33% to 83% cheaper. The fairest coin taught me that "the reading you're
 least sure about" isn't always the best reading: it also has to be able to tell
 apart the cells you actually care about. All 14,400 searches take about 30
-minutes on 4 cores, and most of that is the fairest coin checking the warmth of
-every cell before every other reading.
+minutes on 4 cores with the faster numpy copy of my code, and most of that is the
+fairest coin checking the warmth of every cell before every other reading.

@@ -40,31 +40,44 @@ def run_trial(trial):
     return rows
 
 
+# the average of one column (like "cost") over every search with this detector, setting, strategy and
+# free_moves. rows is a list of searches, each one is a list in the same order as COLUMNS
+def average(rows, detector, setting, strategy, free_moves, column):
+    i = COLUMNS.index(column)
+    total = 0
+    count = 0
+    for row in rows:
+        if row[0] == detector and row[1] == setting and row[3] == strategy and row[4] == free_moves:
+            total += row[i]
+            count += 1
+    return total / count
+
+
 # makes a table with one row for each k (or alpha) and the average cost of each strategy, plus how much
 # cheaper (in %) my strategy is than the baseline. free moves is for the question 6 table, where the cost is
 # only the detector (1/2 per reading) for everything, including the baseline and my normal strategy
-def cost_table(results, detector, free_moves):
-    rows = []
-    settings = sorted(results[results["detector"] == detector]["setting"].unique())
+def cost_table(rows, detector, free_moves):
+    settings = K_VALUES
+    name = "k"
+    if detector == "B":
+        settings = ALPHA_VALUES
+        name = "alpha"
+    table = []
     for setting in settings:
-        runs = results[(results["detector"] == detector) & (results["setting"] == setting)]
-        baseline = runs[(runs["strategy"] == "baseline") & (runs["free_moves"] == False)]
-        mine = runs[(runs["strategy"] == "mine") & (runs["free_moves"] == False)]
         if not free_moves:
-            base_cost = baseline["cost"].mean()
-            my_cost = mine["cost"].mean()
-            rows.append([setting, round(base_cost, 1), round(my_cost, 1),
-                         round(100 * (base_cost - my_cost) / base_cost, 1)])
+            base_cost = average(rows, detector, setting, "baseline", False, "cost")
+            my_cost = average(rows, detector, setting, "mine", False, "cost")
+            table.append([float(setting), round(base_cost, 1), round(my_cost, 1),
+                          round(100 * (base_cost - my_cost) / base_cost, 1)])
         else:
-            my_free = runs[(runs["strategy"] == "mine") & (runs["free_moves"] == True)]
-            base_cost = 0.5 * baseline["readings"].mean()
-            rows.append([setting, round(base_cost, 1), round(0.5 * mine["readings"].mean(), 1),
-                         round(my_free["cost"].mean(), 1),
-                         round(100 * (base_cost - my_free["cost"].mean()) / base_cost, 1)])
-    name = "k" if detector == "A" else "alpha"
+            base_cost = 0.5 * average(rows, detector, setting, "baseline", False, "readings")
+            my_normal = 0.5 * average(rows, detector, setting, "mine", False, "readings")
+            my_free = average(rows, detector, setting, "mine", True, "cost")
+            table.append([float(setting), round(base_cost, 1), round(my_normal, 1), round(my_free, 1),
+                          round(100 * (base_cost - my_free) / base_cost, 1)])
     if not free_moves:
-        return pd.DataFrame(rows, columns=[name, "baseline", "mine", "% cheaper"])
-    return pd.DataFrame(rows, columns=[name, "baseline", "mine (normal)", "mine (free moves)", "% cheaper"])
+        return pd.DataFrame(table, columns=[name, "baseline", "mine", "% cheaper"])
+    return pd.DataFrame(table, columns=[name, "baseline", "mine (normal)", "mine (free moves)", "% cheaper"])
 
 
 # runs every trial (one trial on each core at a time), then saves every row and the four tables
@@ -76,13 +89,12 @@ def main():
     for one_trial in trial_rows:
         for row in one_trial:
             rows.append(row)
-    results = pd.DataFrame(rows, columns=COLUMNS)
-    results.to_csv("results/main.csv", index=False)
+    pd.DataFrame(rows, columns=COLUMNS).to_csv("results/main.csv", index=False)
 
-    cost_table(results, "A", False).to_csv("results/type_a_cost.csv", index=False)
-    cost_table(results, "B", False).to_csv("results/type_b_cost.csv", index=False)
-    cost_table(results, "A", True).to_csv("results/type_a_free_moves.csv", index=False)
-    cost_table(results, "B", True).to_csv("results/type_b_free_moves.csv", index=False)
+    cost_table(rows, "A", False).to_csv("results/type_a_cost.csv", index=False)
+    cost_table(rows, "B", False).to_csv("results/type_b_cost.csv", index=False)
+    cost_table(rows, "A", True).to_csv("results/type_a_free_moves.csv", index=False)
+    cost_table(rows, "B", True).to_csv("results/type_b_free_moves.csv", index=False)
     print("Finished!")
 
 

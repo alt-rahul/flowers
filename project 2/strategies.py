@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 from detector import ping_chance_map
@@ -5,51 +7,75 @@ from search import map_distance
 
 # this file has the 4 strategies (2 baselines and 2 of mine) that decide where the LocatorBot goes next.
 # every strategy gets the knowledge base and the LocatorBot's position and returns the cell it wants to go to,
-# then the simulation walks there with BFS and runs the detector once it gets there
-
-
-# BFS distances (number of moves) from pos to every cell as a numpy array, it's just map_distance from
-# project 1 turned into an array so we can do math on every cell at once
-def walk_distances(ship, pos):
-    return np.array(map_distance(ship, [pos], set()))
+# then the simulation walks there with BFS and runs the detector once it gets there.
+# map_distance (BFS from project 1) gives the number of moves from pos to every cell, dist[r][c]
 
 
 # ---------------------------------------------- baselines ----------------------------------------------
 
 # baseline type A: go to the nearest cell the LostBot could still be in, breaking ties at random
 def baseline_a(ship, possible, pos):
-    dist = walk_distances(ship, pos)
-    dist[~possible] = np.inf   # only look at cells that are still possible
-    ties = np.argwhere(dist == dist.min())
-    r, c = ties[np.random.randint(len(ties))]
-    return (int(r), int(c))
+    dist = map_distance(ship, [pos], set())
+    nearest = math.inf
+    ties = []
+    for r in range(ship.D):
+        for c in range(ship.D):
+            if possible[r][c] and dist[r][c] < nearest:   # a new closest cell
+                nearest = dist[r][c]
+                ties = [(r, c)]
+            elif possible[r][c] and dist[r][c] == nearest:   # just as close as the closest one
+                ties.append((r, c))
+    return ties[np.random.randint(len(ties))]
 
 
 # baseline type B: go to the cell that's most likely to have the LostBot, breaking ties by distance
 # and then at random
 def baseline_b(ship, prob, pos):
-    dist = walk_distances(ship, pos)
-    ties = np.argwhere(prob == prob.max())
+    dist = map_distance(ship, [pos], set())
+    # first find the biggest probability
+    biggest = 0
+    for r in range(ship.D):
+        for c in range(ship.D):
+            if prob[r][c] > biggest:
+                biggest = prob[r][c]
+    # then every cell that has it
+    ties = []
+    for r in range(ship.D):
+        for c in range(ship.D):
+            if prob[r][c] == biggest:
+                ties.append((r, c))
+    # if there's more than one, only keep the closest ones
     if len(ties) > 1:
-        tie_dist = dist[ties[:, 0], ties[:, 1]]
-        ties = ties[tie_dist == tie_dist.min()]
-    r, c = ties[np.random.randint(len(ties))]
-    return (int(r), int(c))
+        closest = math.inf
+        for r, c in ties:
+            if dist[r][c] < closest:
+                closest = dist[r][c]
+        closest_ties = []
+        for r, c in ties:
+            if dist[r][c] == closest:
+                closest_ties.append((r, c))
+        ties = closest_ties
+    return ties[np.random.randint(len(ties))]
 
 
 # ------------------------------------------ my type A: minimax ------------------------------------------
 
 # this is based on minimax from the game trees in class, the LocatorBot is MAX (it picks where to run the
 # detector) and the detector is MIN (it picks the answer). MIN always gives the worst answer for us, so this
-# counts how many cells a reading at x is SURE to cross out no matter what the answer is:
+# counts how many cells a reading at (r, c) is SURE to cross out no matter what the answer is:
 # a ping crosses out every possible cell outside the square, a no ping crosses out every one inside it,
-# so the worst case is the smaller one. if the LostBot could be in x itself, x is gone either way
-# (it either says found or x gets crossed out) so that's 1 more
-def sure_crossed_out(possible, x, k):
-    r, c = x
-    here = 1 if possible[r, c] else 0
-    inside = possible[max(r - k, 0):r + k + 1, max(c - k, 0):c + k + 1].sum() - here
-    outside = possible.sum() - inside - here
+# so the worst case is the smaller one. if the LostBot could be in (r, c) itself, it's gone either way
+# (it either says found or it gets crossed out) so that's 1 more. total is how many cells are still possible
+def sure_crossed_out(possible, r, c, k, total):
+    here = 0
+    if possible[r][c]:
+        here = 1
+    inside = 0   # possible cells in the square, not counting (r, c)
+    for i in range(r - k, r + k + 1):
+        for j in range(c - k, c + k + 1):
+            if 0 <= i < len(possible) and 0 <= j < len(possible) and possible[i][j] and (i, j) != (r, c):
+                inside += 1
+    outside = total - inside - here
     return here + min(inside, outside)
 
 
@@ -58,15 +84,20 @@ def sure_crossed_out(possible, x, k):
 # past the edge of what we already searched (so the whole square is new), and after a ping it's a spot that
 # cuts the possible cells in half (binary search). when moving is free (question 6) we don't divide by the cost
 def my_a(ship, possible, pos, k, free_moves):
-    dist = walk_distances(ship, pos)
+    dist = map_distance(ship, [pos], set())
+    total = 0   # how many cells are still possible
+    for r in range(ship.D):
+        for c in range(ship.D):
+            if possible[r][c]:
+                total += 1
     best = None
     best_score = -1
-    for x in ship.open_cells():
-        score = sure_crossed_out(possible, x, k)
+    for r, c in ship.open_cells():
+        score = sure_crossed_out(possible, r, c, k, total)
         if not free_moves:
-            score = score / (dist[x] + 0.5)
-        if score > best_score or (score == best_score and dist[x] < dist[best]):
-            best = x
+            score = score / (dist[r][c] + 0.5)
+        if score > best_score or (score == best_score and dist[r][c] < dist[best[0]][best[1]]):
+            best = (r, c)
             best_score = score
     return best
 
@@ -77,9 +108,9 @@ def my_a(ship, possible, pos, k, free_moves):
 # P(heads) in the two coins example, we add up P(LostBot in b) * P(ping | LostBot in b) over every cell b.
 # if the LostBot is in x itself the detector says found, which is even better than a ping, so that counts as 1
 def warmth(prob, x, alpha):
-    chance = ping_chance_map(prob.shape[0], x, alpha)
-    chance[x] = 1
-    return (prob * chance).sum()
+    chance = ping_chance_map(len(prob), x, alpha)
+    chance[x[0]][x[1]] = 1
+    return (prob * chance).sum()   # every cell's probability times its ping chance, all added up
 
 
 # my type B strategy is hill climbing (local search) on the warmth, like playing "warmer / colder". it steps to
