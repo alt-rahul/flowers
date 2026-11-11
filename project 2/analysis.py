@@ -48,9 +48,9 @@ def plot_ping_chance():
     distances = np.arange(1, 31)
     alphas = [0.05, 0.2, 1.0]
     plt.figure(figsize=(8, 5))
-    for index in range(len(alphas)):
-        chances = np.exp(-alphas[index] * (distances - 1))
-        plt.plot(distances, chances, marker="o", markersize=3, color=GRAYS[index], label=f"alpha = {alphas[index]}")
+    for i in range(len(alphas)):
+        chances = np.exp(-alphas[i] * (distances - 1))
+        plt.plot(distances, chances, marker="o", markersize=3, color=GRAYS[i], label=f"alpha = {alphas[i]}")
     plt.axhline(0.5, color="black", linestyle="--", label="a 50/50 chance")
     plt.xlabel("Distance between the two bots (d)")
     plt.ylabel("Chance of a ping")
@@ -88,9 +88,9 @@ def lowest_setting(table):
     settings = list(table[table.columns[0]])
     costs = list(table["mine"])
     best = 0
-    for index in range(len(costs)):
-        if costs[index] < costs[best]:
-            best = index
+    for i in range(len(costs)):
+        if costs[i] < costs[best]:
+            best = i
     return settings[best]
 
 

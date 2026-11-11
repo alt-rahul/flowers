@@ -68,9 +68,9 @@ def sure_crossed_out(possible, row, col, k, total):
     if possible[row][col]:
         here = 1
     inside = 0   # possible cells in the square, not counting row, col itself
-    for square_row in range(row - k, row + k + 1):
-        for square_col in range(col - k, col + k + 1):
-            if 0 <= square_row < len(possible) and 0 <= square_col < len(possible) and possible[square_row][square_col] and (square_row, square_col) != (row, col):
+    for i in range(row - k, row + k + 1):
+        for j in range(col - k, col + k + 1):
+            if 0 <= i < len(possible) and 0 <= j < len(possible) and possible[i][j] and (i, j) != (row, col):
                 inside += 1
     outside = total - inside - here
     return here + min(inside, outside)
