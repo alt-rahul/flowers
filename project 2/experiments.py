@@ -6,7 +6,7 @@ from simulation import run_search, setup_trial
 
 # this file runs every strategy on thousands of searches and saves the results as csv files in the results folder.
 # in project 1 I said I wanted to learn parallelization to make the experiments faster, so this time I used
-# Pool from multiprocessing: it runs one trial on each core of the computer at the same time, so with 4 cores
+# Pool from multiprocessing, it runs one trial on each core of the computer at the same time, so with 4 cores
 # it's about 4 times faster. every trial is completely separate from the others so they can run in any order.
 # trial number i always uses seed i for the ship and the two starting cells (the same as project 1), and seed
 # SEED + i for the random numbers during the search, so any search can be made again exactly the same way
@@ -23,11 +23,11 @@ ALPHA_VALUES = [0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
 COLUMNS = ["detector", "setting", "trial", "strategy", "free_moves", "found", "moves", "readings", "cost", "ms"]
 
 
-# every search on one trial: the ship only gets built once (building it takes longer than most searches) and
+# every search on one trial, the ship only gets built once since building it takes longer than most searches, and
 # then every strategy runs on it at every k and alpha. both strategies run with the normal costs, and my strategies
 # also run again with free moves for question 6. the baselines don't need a free moves run, they don't look at
 # the cost at all so they do the exact same thing either way, their free moves cost is just half their readings.
-# it returns one row for each search (in the same order as COLUMNS)
+# it returns one row for each search in the same order as COLUMNS
 def run_trial(trial):
     ship, bot_start, lost = setup_trial(D, trial)
     rows = []
@@ -40,22 +40,22 @@ def run_trial(trial):
     return rows
 
 
-# the average of one column (like "cost") over every search with this detector, setting, strategy and
+# the average of one column like cost over every search with this detector, setting, strategy and
 # free_moves. rows is a list of searches, each one is a list in the same order as COLUMNS
 def average(rows, detector, setting, strategy, free_moves, column):
-    i = COLUMNS.index(column)
+    column_index = COLUMNS.index(column)
     total = 0
     count = 0
     for row in rows:
         if row[0] == detector and row[1] == setting and row[3] == strategy and row[4] == free_moves:
-            total += row[i]
+            total += row[column_index]
             count += 1
     return total / count
 
 
-# makes a table with one row for each k (or alpha) and the average cost of each strategy, plus how much
-# cheaper (in %) my strategy is than the baseline. free moves is for the question 6 table, where the cost is
-# only the detector (1/2 per reading) for everything, including the baseline and my normal strategy
+# makes a table with one row for each k or alpha and the average cost of each strategy, plus how much
+# cheaper in percent my strategy is than the baseline. free moves is for the question 6 table, where the cost is
+# only the detector, 1/2 per reading, for everything including the baseline and my normal strategy
 def cost_table(rows, detector, free_moves):
     settings = K_VALUES
     name = "k"
@@ -80,7 +80,7 @@ def cost_table(rows, detector, free_moves):
     return pd.DataFrame(table, columns=[name, "baseline", "mine (normal)", "mine (free moves)", "% cheaper"])
 
 
-# runs every trial (one trial on each core at a time), then saves every row and the four tables
+# runs every trial, one trial on each core at a time, then saves every row and the four tables
 def main():
     print(f"Running {TRIALS} trials")
     with Pool() as pool:
@@ -98,6 +98,6 @@ def main():
     print("Finished!")
 
 
-# the "if __name__" part is needed for Pool, otherwise every core would start running main() again
+# the if __name__ part is needed for Pool, otherwise every core would start running main() again
 if __name__ == "__main__":
     main()

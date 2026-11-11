@@ -48,16 +48,16 @@ def map_distance(ship, starts, restricted):
     for row in range(ship.D): # goes through all the rows 
         dist.append([math.inf] * ship.D) # assigns infinity states to all columns in each row
     fringe = deque() # starts the queue
-    for r, c in starts:
-        dist[r][c] = 0 #the start cells obviously have a distance of 0 since it takes 0 distance to reach there
-        fringe.append((r, c)) # added to the queue
+    for row, col in starts:
+        dist[row][col] = 0 #the start cells obviously have a distance of 0 since it takes 0 distance to reach there
+        fringe.append((row, col)) # added to the queue
     while len(fringe) > 0:
         current_state = fringe.popleft()
-        r, c = current_state 
+        row, col = current_state 
         for child in ship.neighbors(current_state): #iterates through each child
-            cr, cc = child
-            if dist[cr][cc] == math.inf and child not in restricted: # check if the child has been seen before 
-                dist[cr][cc] = dist[r][c] + 1 #doesn't just add 1 to all unseen cells, but takes the distance of the parent...
+            child_row, child_col = child
+            if dist[child_row][child_col] == math.inf and child not in restricted: # check if the child has been seen before 
+                dist[child_row][child_col] = dist[row][col] + 1 #doesn't just add 1 to all unseen cells, but takes the distance of the parent...
                 # ...and adds another unit of distance
                 fringe.append(child)
     return dist
