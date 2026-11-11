@@ -14,30 +14,25 @@ running the detector in its cell, so every search ends with one detector use,
 and the cost of a search is the number of moves plus half the number of detector
 uses. In my Project 1 writeup I said I wanted to use numpy 2D arrays and
 parallelization next time, so this time the knowledge base is a numpy array, and
-the experiments run
-one search on each core of the computer at the same time.
+the experiments run one search on each core of the computer at the same time.
 
-For the type A detector, $k = 0$ makes the square just the LocatorBot's own
-cell, so the detector only says "found" or "not found", which is no better than
-having no detector at all. If $k \ge D - 1$, the square covers the whole ship
-from anywhere, so it always pings and also says nothing. On a 50 by 50 ship, a
-square with $k = 25$ already covers almost the whole ship from the middle, so I
-tested $k$ from 1 to 25. $k$ sets how far the detector reaches and how precise
-it is: a small square only pings when the LostBot is close, but then it pins it
-down to a few cells, while a big square pings from far away but only says the
-LostBot is somewhere in a big area.
+**The range of k and alpha (the question for analysis on page 1).** With
+$k = 0$ the square is just the LocatorBot's own cell, so the detector says
+nothing new, and with $k \ge D - 1$ the square covers the whole ship from
+anywhere and always pings, so it also says nothing. On a 50 by 50 ship, $k = 25$
+already covers almost the whole ship from the middle, so I tested $k$ from 1 to
+25. $k$ sets the sensitivity like this: a small square only pings when the
+LostBot is close but then pins it down to a few cells, and a big square pings
+from far away but only says it's somewhere in a big area.
 
-For the type B detector, the chance of a ping is $e^{-\alpha(d-1)}$, which is a
-50/50 chance at a distance of $d = 1 + \ln 2 / \alpha$. The distances on a 50
-by 50 ship go up to about 69. With $\alpha = 0.01$ that 50/50 distance is 70, so
-the detector pings almost everywhere (91% of the time even 10 cells away) and a
-ping says very little. With $\alpha = 3$ it is 1.23, so the detector only pings
-right next to the LostBot (5% of the time just 2 cells away), and a no ping says
-very little. The useful values are in between, so I tested 12 values of
-$\alpha$ from 0.01 to 3, spaced out on a log scale (0.01, 0.02, 0.05, 0.1, 0.2,
-0.3, 0.5, 0.75, 1, 1.5, 2 and 3). $\alpha$ sets how fast the detector "goes
-cold" with distance (Figure 1): a small $\alpha$ reaches far but is fuzzy, and a
-big $\alpha$ is precise but only works up close.
+For type B, the chance of a ping is $e^{-\alpha(d-1)}$, which is 0.5 at a
+distance of $d = 1 + \ln 2 / \alpha$, and distances on a 50 by 50 ship go up to
+about 69. At $\alpha = 0.01$ that distance is 70, so the detector pings almost
+everywhere and a ping says very little. At $\alpha = 3$ it's 1.23, so it only
+pings right next to the LostBot and a no ping says very little. So I tested 12
+values of $\alpha$ from 0.01 to 3, spaced out on a log scale. $\alpha$ sets how
+fast the detector goes cold with distance (Figure 1): a small $\alpha$ reaches
+far but is fuzzy, and a big $\alpha$ is precise but only works up close.
 
 ![Figure 1](plots/ping_chance.png)
 
@@ -196,6 +191,37 @@ Warmth is also smoother than the probabilities themselves: a cell is warm if a
 lot of probability is near it, not just in it, so the bot heads for the area
 where the LostBot probably is, instead of one cell that's only slightly more
 likely than the cells around it.
+
+**Scoring rules, and my TA's advice.** When I sent my plan to my TA, they
+said that when choosing where to run the detector, I should think about what the
+rest of the search will cost, not just how much the knowledge base shrinks, and
+that I should write the scoring rule down and compare it with the baselines. So
+every strategy here, the baselines included, comes down to one score:
+
+| strategy | where it can run the detector next | the score it picks the best of |
+|---|---|---|
+| baseline type A | the nearest possible cell | fewest moves |
+| my type A | any open cell | $\text{sure}(x) / (w(x) + \tfrac{1}{2})$ |
+| baseline type B | the most likely cell, ties by distance | $P(b)$ |
+| my type B | a cell next to it, or the most likely cell at the top of a hill | warmth |
+| my type A, free moves | any open cell | $\text{sure}(x)$ |
+| my type B, free moves | any open cell | warmth closest to 0.5, every other reading $P(b)$ |
+
+Each baseline only looks at one side of the TA's advice. Baseline A only looks
+at cost (the closest possible cell) and never at how much a reading there would
+cross out, which is why half its square is usually already searched. Baseline B
+only looks at the knowledge base (the most likely cell) and never at the cost of
+getting there, which is why it walks across the ship after every no ping. My
+type A score puts both sides in one number: the top is how much the knowledge
+base is sure to shrink, and the bottom is what it costs to get that, so a spot
+that crosses out a lot of cells isn't picked if it's too far away. I used the
+worst case instead of the expected amount, since it's simpler and never counts
+on getting lucky. For type B, I kept the cost side simple instead of computing
+it: every step costs the same (one move and one reading), so the score only
+has to compare the warmth of the cells next to it, and the bot never pays for a
+long walk without learning anything on the way. When moving is free, the cost
+side is 0, so both scores are only about how much a reading tells us. Sections 4
+to 7 compare every strategy with its baseline.
 
 ## 4. Type A: baseline vs my strategy (Question 3)
 
