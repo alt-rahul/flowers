@@ -162,6 +162,21 @@ can't even be, which the baseline never considers. I used the worst case instead
 of the average because a reading that splits the cells evenly is good whatever
 the answer is, while a lopsided reading is only good if we get lucky.
 
+**Example (type A).** Take the 5 by 5 ship from the question 1 example, with
+$k = 1$. After the no ping in the corner (0, 0), 21 cells are still possible.
+The baseline walks 2 moves to the nearest possible cell, (0, 2) or (2, 0). Its
+square there only has 4 possible cells in it, since the rest was already
+searched, so it's sure to cross out 4 cells, a score of
+$4 / (2 + \tfrac{1}{2}) = 1.6$. My strategy also walks 2 moves, but to (1, 1),
+a cell where the LostBot can't even be. Its square there has 5 possible cells,
+(0, 2), (1, 2), (2, 0), (2, 1) and (2, 2), with 16 outside, so whatever the
+answer is, it's sure to cross out 5 cells, a score of $5 / 2.5 = 2.0$, the best
+on the ship (a few spots further away tie with it, and ties go to the closest).
+After a ping it does binary search instead: in the question 1 example, the ping
+at (3, 3) left 8 cells, and one of the best spots is (2, 3), one move away,
+since its square holds 4 of the other cells and leaves 3 outside, so either
+answer leaves at most 4.
+
 **Type B: warmer / colder (hill climbing).** For the type B detector I used the
 game "warmer / colder" with hill climbing from the local search lecture. The
 "warmth" of a cell $x$ is the chance that running the detector there pings (or
@@ -191,6 +206,21 @@ Warmth is also smoother than the probabilities themselves: a cell is warm if a
 lot of probability is near it, not just in it, so the bot heads for the area
 where the LostBot probably is, instead of one cell that's only slightly more
 likely than the cells around it.
+
+**Example (type B).** Take the 4 cells in a row from the question 1 example,
+with $\alpha = 1$. After the no ping in cell 1, the chances of cells 1 to 4 are
+0, 0, 0.422 and 0.578. The baseline walks straight to cell 4, the most likely
+one, 3 moves without running the detector on the way. Mine compares where it is
+with the cell next to it. The warmth of cell 1 is
+$0.422 \times e^{-1} + 0.578 \times e^{-2} = 0.234$, and the warmth of cell 2 is
+$0.422 \times 1 + 0.578 \times e^{-1} = 0.635$, so cell 2 is warmer, and it steps
+there and runs the detector. That reading tells it a lot, since if the LostBot
+is in cell 3, it pings for sure. Over 4,000 searches for each cell the LostBot
+could be in, a whole search starting from cell 1 costs 3.5 on average with mine
+and 3.61 with the baseline. Mine is cheaper when the LostBot is in cell 3 (3.5
+vs 4.73), but the baseline is cheaper when it's in cell 4 (4.1 vs 5.0), since
+walking straight there happens to be right. On a real ship the walks are much
+longer, so checking along the way saves a lot more (Section 5).
 
 **Scoring rules, and my TA's advice.** When I sent my plan to my TA, they
 said that when choosing where to run the detector, I should think about what the
