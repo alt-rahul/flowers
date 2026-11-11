@@ -62,18 +62,6 @@ removes the cells that break it. The code does exactly this. It goes through
 every cell and checks whether the detector would have given the same reading if
 the LostBot were in that cell. If not, that cell is removed.
 
-**Example (type A).** Take a 5 by 5 ship with every cell open and $k = 1$, so
-every square is 3 by 3. At the start, $S$ has all 25 cells. Cells are written
-as (row, column).
-
-1. The LocatorBot is in the corner (0, 0) and gets no ping. In the corner, its
-   square is only 4 cells, (0, 0), (0, 1), (1, 0) and (1, 1). All 4 are
-   removed, so 21 cells are left.
-2. It moves to (3, 3) and gets a ping. Its square there is the 9 cells with
-   rows and columns from 2 to 4. Every cell outside that square is removed, and
-   so is (3, 3) itself, since the detector did not say found. That leaves 8
-   cells, (2, 2), (2, 3), (2, 4), (3, 2), (3, 4), (4, 2), (4, 3) and (4, 4).
-
 **Type B.** The knowledge base is $P(b)$, the chance that the LostBot is in
 cell $b$. At the start, every open cell has the same chance, $1/N$ for $N$
 open cells. When the LocatorBot in cell $a$ runs the detector and does not
@@ -104,28 +92,6 @@ not matter. I checked this in code, and updating one reading at a time, all at
 once, and in reverse order all gave the same knowledge base. Right next to the
 LocatorBot ($d = 1$), the chance of a ping is 1, so a no ping rules out those 4
 cells completely.
-
-**Example (type B).** Take a small ship that is just 4 cells in a row, cells 1
-to 4, with $\alpha = 1$.
-
-1. At the start, each cell has a chance of 1/4.
-2. The LocatorBot is in cell 1 and does not find the LostBot, so cell 1 goes
-   to 0.
-3. Cells 2, 3 and 4 are 1, 2 and 3 cells away, so their chances of a ping are
-   $e^{0} = 1$, $e^{-1} = 0.368$ and $e^{-2} = 0.135$.
-4. Each cell's 1/4 is multiplied by the chance of the reading it got, then
-   divided by the total.
-
-| | cell 2 | cell 3 | cell 4 | total |
-|---|---|---|---|---|
-| **ping**: 1/4 times the ping chance | 0.25 | 0.092 | 0.034 | 0.376 |
-| new chance (divide by the total) | 0.665 | 0.245 | 0.090 | 1 |
-| **no ping**: 1/4 times (1 minus the ping chance) | 0 | 0.158 | 0.216 | 0.374 |
-| new chance (divide by the total) | 0 | 0.422 | 0.578 | 1 |
-
-A ping makes cell 2, the closest one, the most likely (0.665). A no ping rules
-out cell 2 completely, since it would have pinged for sure, and moves the
-chance to the far end of the row.
 
 ## 3. My strategies (Question 2)
 
@@ -235,8 +201,10 @@ likely than the cells around it.
 **Example (type B).** Take a small ship that is just 4 cells in a row, cells 1
 to 4, with $\alpha = 1$.
 
-1. The LocatorBot starts in cell 1 and gets no ping. From the question 1
-   example, the chances of cells 1 to 4 are now 0, 0, 0.422 and 0.578.
+1. Each cell starts with a chance of 1/4. The LocatorBot starts in cell 1 and
+   gets no ping. With the update rule from question 1, cell 1 goes to 0, and
+   cell 2 also goes to 0, since it is right next to cell 1 and would have pinged
+   for sure. Cells 3 and 4 become 0.422 and 0.578.
 2. The baseline walks straight to cell 4, the most likely cell. That is 3 moves
    without running the detector on the way.
 3. My strategy only compares where it is with the cell next to it. The warmth
