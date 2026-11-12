@@ -13,7 +13,11 @@ LocatorBot only finds the LostBot by running the detector in the LostBot's
 cell. The cost of a search is the number of moves plus half the number of
 detector uses.
 
-**The range of k and alpha (the question for analysis on page 1).**
+**The range of k and alpha (the question for analysis on page 1).** The range
+of k to consider is 1 to 25, and the range of alpha to consider is 0.01 to 3.
+Both set the sensitivity of the detector: k sets how far the type A detector
+reaches and how precise a ping is, and alpha sets how fast the chance of a type
+B ping falls as the LostBot gets further away.
 
 For type A, k is the size of the square. With k = 0, the square is only the
 LocatorBot's own cell, so the detector gives no new information. With k
@@ -44,6 +48,9 @@ fuzzy, and a big alpha is sharp but only works up close.
 *Figure 1: The chance of a type B ping based on how far away the LostBot is, for a small, a medium and a big alpha.*
 
 ## 2. Updating the knowledge base (Question 1)
+
+The explicit update rules for the type A and type B knowledge bases are below,
+each followed by why it is correct.
 
 **Type A.** The knowledge base is S, the set of cells the LostBot could still
 be in. At the start, S is every open cell. Let the LocatorBot be in cell a.
@@ -101,9 +108,15 @@ cells completely.
 
 ## 3. My strategies (Question 2)
 
-Each of my strategies is built on one idea from the course and uses one
-scoring rule. I also tested other ideas from the course on a small number of
-ships: hill climbing over detector spots for type A, and for type B, choosing
+My type A strategy runs the detector at the spot that is sure to remove the
+most possible cells for the cost of getting there, based on minimax. My type B
+strategy runs the detector in every cell and steps to the warmest cell next to
+it, where the warmth of a cell is its chance of a ping, based on hill climbing.
+Both use the whole knowledge base, and both should beat the baselines because
+each baseline only considers one side of the problem, either the cost of moving
+or the knowledge base. Each strategy is described below, with an example.
+
+I also tested other ideas from the course on a small number of ships: hill climbing over detector spots for type A, and for type B, choosing
 a random target cell using the probabilities (sampling) and a "treasure map"
 built with the utility recursion from the MDP lecture. They also beat the
 baselines, but I chose the two strategies below because they are the simplest
@@ -270,6 +283,10 @@ baseline.
 
 ## 4. Type A: baseline vs my strategy (Question 3)
 
+My type A strategy has a lower average discovery cost than the baseline at
+every k (Figure 2 and Table 1), from 9% lower at k = 4 to 40% lower at k = 25.
+The most interesting k regime is about k = 8 to k = 15.
+
 All experiments use 50 by 50 ships, the same size as Project 1. Larger ships
 were not used because both the number of cells to check after each reading and
 the length of each search grow with the size of the ship, which would make the
@@ -299,9 +316,8 @@ easier ships.
 | 20 | 221.3 | 141.7 | 36.0 |
 | 25 | 284.6 | 171.0 | 39.9 |
 
-My strategy is cheaper at every k, from 9% cheaper at k = 4 to 40% cheaper
-at k = 25. It is not cheaper on every single search, only on 56% to 64% of
-them depending on k, but it is always cheaper on average.
+My strategy does not have a lower cost on every single search, only on 56% to
+64% of them depending on k, but its average cost is always lower.
 
 For small k, both strategies are expensive. A small square means sweeping
 most of the ship, so almost all of the cost is walking. At k = 1, the
@@ -314,8 +330,8 @@ reading usually pings, and then it checks cells one at a time, so it runs the
 detector 122 times. My strategy only needs about 13 readings, since after the
 ping every reading cuts the possible cells in half.
 
-The most interesting k regime is about k = 8 to k = 15, which is about
-D/6 to D/3. This is where both strategies are cheapest. Mine is lowest at
+The k regime from about k = 8 to k = 15, which is about D/6 to D/3, is the
+most interesting because it is where both strategies are cheapest. Mine is lowest at
 k = 15 (124.6) and the baseline is lowest at k = 12 (160.5). It is also
 where cutting the possible cells in half starts to pay off, so the gap between
 the strategies grows, from 20% at k = 12 to 28% at k = 15.
@@ -338,6 +354,12 @@ area, and the spots that cut that area in half are about k moves apart, so
 every reading needs a longer walk.
 
 ## 5. Type B: baseline vs my strategy (Question 4)
+
+My type B strategy has a lower average discovery cost than the baseline at
+every alpha (Figure 3 and Table 2), from 33% lower at alpha = 0.01 to 83% lower
+at alpha = 2. I chose alpha from 0.01 to 3, so that the distance where the
+ping chance is 0.5 goes from beyond the furthest cell on the ship down to the
+cells right next to the LocatorBot.
 
 **How I chose the range of alpha.** A good range of alpha depends on the size
 of the ship, since alpha only matters through how fast the ping chance falls
@@ -382,8 +404,7 @@ would be larger.
 | 2 | 8992.2 | 1567.8 | 82.6 |
 | 3 | 9917.3 | 1795.8 | 81.9 |
 
-My strategy is 33% to 83% cheaper at every alpha, and cheaper on 70% to 90%
-of the searches. Almost all of the cost of the baseline is walking. After a no
+My strategy has a lower cost on 70% to 90% of the searches. Almost all of the cost of the baseline is walking. After a no
 ping, the most likely cell is the furthest one, so it walks across the ship
 without running the detector once. The bigger alpha is, the more often it
 does not ping, so the more it walks. At alpha = 0.1, the baseline makes 867
@@ -423,17 +444,18 @@ walk happens to be correct, as in the type B example in Section 3.
 
 ## 6. Which detector is more efficient? (Question 5)
 
-For my strategies, the most efficient k is 15 and the most efficient alpha is
-0.1. At these settings, type A is the more efficient detector. Type A costs
-124.6 at k = 15 and type B costs 309.3 at alpha = 0.1, so type A is about 60%
-cheaper, or 2.5 times. With the baselines the gap is even bigger, 160.5 at
-k = 12 against 670.3 at alpha = 0.05.
+The type A detector is more efficient. For my strategies, the most efficient
+k is 15 and the most efficient alpha is 0.1. At these settings, type A finds
+the LostBot with an average cost of 124.6 and type B with 309.3, so type A is
+about 2.5 times more efficient. It is more efficient because a type A reading
+is certain, while a type B reading is a coin flip. With the baselines the gap
+is even bigger, 160.5 at k = 12 against 670.3 at alpha = 0.05.
 
 ![Figure 4](plots/cost_breakdown.png)
 
 *Figure 4: Where the cost goes for each strategy at k = 15 and alpha = 0.1: the average number of moves, and half the average number of detector uses.*
 
-The reason is that a type A reading is certain. A ping or a no ping removes
+In more detail, a type A ping or no ping removes
 cells for good and is never wrong, so after the first ping every reading cuts
 the possible cells in half, and my strategy only needs about 13 readings in a
 whole search. A type B reading is a coin flip. One ping does not prove the
@@ -443,6 +465,14 @@ more too (277 moves against 118), since it decides which way to go one step at
 a time. Figure 4 shows that most of the difference is the extra walking.
 
 ## 7. When moving is free (Question 6)
+
+When moving is free, my type A strategy stops dividing by the cost of walking,
+so it becomes binary search over the whole ship, and my type B strategy changes
+from warmer or colder to a fairest coin rule. The baselines do not change.
+Compared with the baselines, my type A strategy has a 45% to 90% lower cost at
+every k, while my fairest coin only has a lower cost for alpha of 1.5 and up.
+Tuned to their best settings, the type A detector is more efficient, about 3
+times more efficient than type B.
 
 If only the detector has a cost, both of my strategies change, because walking
 no longer matters. The baselines do not change, since they never look at the
@@ -483,8 +513,7 @@ still the best spot.
 | type B, alpha = 0.2 | 18.3 | 35.3 | 20.5 |
 | type B, alpha = 2 | 103.5 | 217.5 | 89.0 |
 
-For type A, the change makes a big difference. My free moves strategy is 45% to
-90% cheaper than the baseline. From k = 15 up, it needs about 11.7 readings,
+For type A, the change makes a big difference. From k = 15 up, it needs about 11.7 readings,
 a cost of 5.9. This is close to perfect binary search, which would need
 log base 2 of the roughly 1,600 open cells, about 10.7 readings. The best k
 also goes up. When walking is free, a bigger square is better since it can
@@ -499,7 +528,7 @@ For type B, the fairest coin was only partly successful:
 - for alpha up to 0.05, it costs 45% to 67% more than the baseline
 - for alpha from 0.1 to 0.3, it costs 12% to 17% more
 - for alpha from 0.5 to 1, it costs about the same
-- for alpha of 1.5 and up, it is 10% to 15% cheaper
+- for alpha of 1.5 and up, it costs 10% to 15% less
 
 The reason is where the fair coin is. The spot where the ping chance is 0.5 is
 about 1 + ln(2) / alpha cells away from where the LostBot probably is. At
@@ -512,23 +541,24 @@ cell at a time like the baseline. My normal warmer or colder strategy costs 1.5
 to 2.2 times as much as the baseline here, because it reads on every step to
 save walking, and walking is now free.
 
-Tuned to their best settings, type A is still the more efficient detector, by
-even more than before. Type A is best at k = 15 and up, where my free moves
-strategy costs 5.9. Type B is best at alpha = 0.2, where the baseline costs
-18.3 and my fairest coin costs 20.5. So type A is about 3 times cheaper. With free moves, the only thing that matters is how much each
-reading tells us, and a certain reading that can split the ship in half is worth
-much more than a coin flip.
+Type A is still the more efficient detector when both are tuned, by even more
+than before. Type A is best at k = 15 and up, where my free moves strategy
+costs 5.9. Type B is best at alpha = 0.2, where the baseline costs 18.3 and my
+fairest coin costs 20.5. So type A is about 3 times more efficient. With free
+moves, the only thing that matters is how much each reading tells us, and a
+certain reading that can split the ship in half is worth much more than a coin
+flip.
 
 ## 8. Conclusion
 
 My type A strategy assumes the detector always gives the worst answer, and that
 one rule makes it read past the edge of what it has searched before a ping and
-do binary search after one. It is 9% to 40% cheaper than the baseline at every
-k. My type B strategy decides again after every step instead of walking
-blindly to the most likely cell, which makes it 33% to 83% cheaper at every
-alpha. At their best settings, the type A detector is about 2.5 times
-cheaper than type B, because a certain reading gives much more information than
-a coin flip. When moving is free, type A becomes close to perfect binary
+do binary search after one. Its discovery cost is 9% to 40% lower than the
+baseline at every k. My type B strategy decides again after every step instead
+of walking blindly to the most likely cell, which makes its discovery cost 33%
+to 83% lower at every alpha. At their most efficient settings, the type A
+detector is about 2.5 times more efficient than type B, because a certain
+reading gives much more information than a coin flip. When moving is free, type A becomes close to perfect binary
 search, while the fairest coin for type B only beats the baseline for big
 alpha, since a reading also has to be able to tell apart the cells that
 matter.
