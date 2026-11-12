@@ -129,17 +129,22 @@ way, and 0 if not. The LocatorBot goes to the spot with the best score
 $$\text{score}(x) = \frac{\text{sure}(x)}{\text{moves}(x) + \frac{1}{2}}$$
 
 where moves(x) is the number of moves to get there (from BFS) and the 1/2 is
-the detector use. Ties go to the closest spot.
+the detector use. Ties go to the closest spot. This uses everything in the
+knowledge base: which cells are still possible, where they are compared to the
+square of every spot, and how far away every spot is.
 
-This one rule acts differently before and after the first ping. Before a ping,
+This should beat the baseline because the one rule acts differently before and
+after the first ping. Before a ping,
 the inside of a fresh square is small compared to the rest of the ship, so the
 score depends on how many unsearched cells the square holds. The best spot is
 usually just past the edge of what has already been searched. The baseline
 reads right on that edge, so about half of its square was already searched.
 After a ping, every possible cell is inside one square, so the best spot is one
 whose square cuts them in half, since then neither answer is bad. This is
-binary search, while the baseline goes back to checking the nearest cell one at
-a time. The best spot is often a cell where the LostBot cannot be, which the
+binary search. If every reading cuts the possible cells about in half, finding
+the LostBot among the cells of one square takes about log base 2 of that number
+of readings, while the baseline goes back to checking the nearest cell one at a
+time and can need one reading for every cell. The best spot is often a cell where the LostBot cannot be, which the
 baseline never considers. I used the worst case instead of the average because
 an even split is good whatever the answer is, while an uneven split is only
 good with luck.
@@ -192,7 +197,10 @@ found, which is even better than a ping. Each step works like this:
 
 Unlike hill climbing in class, the hill here changes after every reading. A
 ping makes the cells around the LocatorBot warmer, so it keeps climbing towards
-them. A no ping makes them colder and pushes it away.
+them. A no ping makes them colder and pushes it away. This uses the whole
+knowledge base, since the warmth of a cell adds up the chance of every cell on
+the ship, together with alpha, but it only compares the cells next to the
+LocatorBot when deciding where to go.
 
 This should beat the baseline because the baseline makes one decision and then
 walks the whole way without running the detector. After a no ping, the most
@@ -415,9 +423,10 @@ walk happens to be correct, as in the type B example in Section 3.
 
 ## 6. Which detector is more efficient? (Question 5)
 
-At their best settings, type A is cheaper. With my strategies, type A costs
-124.6 at k = 15 and type B costs 309.3 at alpha = 0.1, so type A is about
-60% cheaper, or 2.5 times. With the baselines the gap is even bigger, 160.5 at
+For my strategies, the most efficient k is 15 and the most efficient alpha is
+0.1. At these settings, type A is the more efficient detector. Type A costs
+124.6 at k = 15 and type B costs 309.3 at alpha = 0.1, so type A is about 60%
+cheaper, or 2.5 times. With the baselines the gap is even bigger, 160.5 at
 k = 12 against 670.3 at alpha = 0.05.
 
 ![Figure 4](plots/cost_breakdown.png)
@@ -436,7 +445,9 @@ a time. Figure 4 shows that most of the difference is the extra walking.
 ## 7. When moving is free (Question 6)
 
 If only the detector has a cost, both of my strategies change, because walking
-no longer matters.
+no longer matters. The baselines do not change, since they never look at the
+cost of moving. They make the same moves and readings as before, and their cost
+is now just half of their detector uses.
 
 For type A, my minimax strategy drops the cost. It picks the spot anywhere on
 the ship that is sure to remove the most cells, without dividing by the walk.
@@ -501,10 +512,10 @@ cell at a time like the baseline. My normal warmer or colder strategy costs 1.5
 to 2.2 times as much as the baseline here, because it reads on every step to
 save walking, and walking is now free.
 
-Type A is still the more efficient detector, by even more than before. It costs
-5.9 at k = 15 and up, against 18.3 for the best type B result, which is the
-baseline at alpha = 0.2 (my fairest coin gets 20.5 there). That is about 3
-times cheaper. With free moves, the only thing that matters is how much each
+Tuned to their best settings, type A is still the more efficient detector, by
+even more than before. Type A is best at k = 15 and up, where my free moves
+strategy costs 5.9. Type B is best at alpha = 0.2, where the baseline costs
+18.3 and my fairest coin costs 20.5. So type A is about 3 times cheaper. With free moves, the only thing that matters is how much each
 reading tells us, and a certain reading that can split the ship in half is worth
 much more than a coin flip.
 
