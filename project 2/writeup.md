@@ -331,12 +331,27 @@ every reading needs a longer walk.
 
 ## 5. Type B: baseline vs my strategy (Question 4)
 
-I picked the values of alpha where the detector stops being useful on both
-ends (Section 1). At alpha = 0.01 it pings almost everywhere, and at
-alpha = 3 it only pings right next to the LostBot. The ping chance changes
-the most for small alpha, so I spread the values out on a log scale instead
-of evenly. I also checked that the cost goes back up at both ends, so the best
-alpha is inside the range.
+**How I chose the range of alpha.** A good range of alpha depends on the size
+of the ship, since alpha only matters through how fast the ping chance falls
+compared to the distances on the ship. The chance of a ping drops to 0.5 at a
+distance of 1 + ln(2) / alpha (Section 1), and on a 50 by 50 ship the distances
+go from 1 to about 69. So I chose the two ends of the range so that this
+distance covers the whole ship:
+
+- At alpha = 0.01, the chance only drops to 0.5 at a distance of 70, which is
+  further than any two cells on the ship. Even the furthest cell pings about
+  half the time, so a smaller alpha would make every reading tell us even less.
+- At alpha = 3, the chance drops to 0.5 at a distance of 1.23. A cell 2 away
+  only pings 5% of the time, so the detector is almost only checking the 4
+  cells next to the LocatorBot, and a bigger alpha would behave almost the same.
+
+Between the two ends, I spread 12 values out on a log scale instead of evenly.
+The distance where the chance is 0.5 depends on 1 divided by alpha, so small
+values of alpha change the detector much more than big ones. Finally, I checked
+that the range is wide enough. Both strategies cost more at both ends than in
+the middle, so the best alpha is inside the range and not cut off by it. On a
+bigger ship, the low end would need to be smaller, since the furthest distance
+would be larger.
 
 ![Figure 3](plots/cost_vs_alpha.png)
 
