@@ -312,6 +312,23 @@ k = 15 (124.6) and the baseline is lowest at k = 12 (160.5). It is also
 where cutting the possible cells in half starts to pay off, so the gap between
 the strategies grows, from 20% at k = 12 to 28% at k = 15.
 
+**Why these results may have occurred.** The gain from my strategy likely grows
+with k because the first ping comes earlier when the square is bigger. With a
+small square, most of the search happens before any ping, and there both
+strategies have to sweep the ship, so my strategy can only save the overlap
+between squares. With a big square, the first reading usually pings, so most of
+the search happens after a ping, which is where binary search is much better
+than checking one cell at a time. The gain is not perfectly smooth (8.7% at
+k = 4 and 10.1% at k = 8), which may come from the walls and dead ends of the
+ship, since they decide whether a fresh square can be placed just past the
+searched edge, and from the variation between only 200 searches. My strategy is
+not cheaper on every search because, when the LostBot starts close to the
+LocatorBot, the nearest first order of the baseline finds it right away, while
+my strategy may first read a spot further out. Finally, both strategies cost
+more again for very big k, likely because a ping from a big square leaves a big
+area, and the spots that cut that area in half are about k moves apart, so
+every reading needs a longer walk.
+
 ## 5. Type B: baseline vs my strategy (Question 4)
 
 I picked the values of alpha where the detector stops being useful on both
@@ -365,6 +382,21 @@ to 7% at alpha = 1. For big alpha, the detector only pings right next to
 the LostBot, so the search turns into checking cells almost one at a time, and
 the cost goes up to 1795.8 at alpha = 3. My strategy still avoids the long
 walks of the baseline.
+
+**Why these results may have occurred.** The cost of the baseline likely grows
+so fast with alpha because, for a big alpha, almost every reading away from the
+LostBot is a no ping. Each no ping pushes the probability to the far side of
+the ship, so the baseline keeps walking back and forth across the ship. At
+alpha = 3 it walks about 9,800 moves but only runs the detector 234 times. My
+strategy never walks that far without reading, so its cost only grows because
+the detector becomes local, which is why the gain grows from 33% to 83% as
+alpha grows. The two strategies may also prefer different values of alpha for
+different reasons. The baseline is cheapest at the smaller alpha = 0.05, since
+a detector that pings more often gives fewer no pings and so fewer long walks.
+My strategy is cheapest at alpha = 0.1, since it needs the warmth to change
+clearly from one cell to the next. My strategy is not cheaper on every search
+because, when the LostBot is in the area the baseline walks to first, its long
+walk happens to be correct, as in the type B example in Section 3.
 
 ## 6. Which detector is more efficient? (Question 5)
 
