@@ -486,7 +486,10 @@ cells as close to half as it can.
 
 For type B, warmer or colder no longer makes sense, since its purpose is to
 take small steps instead of long walks. So I changed it to a fairest coin rule,
-which works as follows.
+which works as follows. The fairest coin still uses the warmth from Section 3,
+but in a different way. Warmer or colder looks for the warmest cell next to the
+LocatorBot, while the fairest coin looks anywhere on the ship for the spot whose
+warmth is closest to 0.5.
 
 Every reading is like flipping a coin, where heads is a ping and tails is no
 ping. Where the LocatorBot stands decides how biased that coin is. The chance
