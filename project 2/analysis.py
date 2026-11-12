@@ -10,7 +10,6 @@ from experiments import average
 
 # the color of each line, my strategies are purple like bot 4 in project 1 and the baseline is blue
 COLORS = {"baseline": "#2a78d6", "mine (normal)": "#4a3aa7", "mine": "#4a3aa7", "mine (free moves)": "#1baf7a"}
-GRAYS = ["#9a9a9a", "#5c5c5c", "#1e1e1e"]
 
 
 # saves the current chart in the plots folder and closes it
@@ -38,23 +37,6 @@ def line_chart(table, strategies, xlabel, ylabel, title, filename, log_x=False, 
     plt.legend()
     plt.grid()
     save_chart(filename)
-
-
-# draws the type B ping chance against distance for three values of alpha, with a dashed line at 0.5
-def plot_ping_chance():
-    distances = np.arange(1, 31)
-    alphas = [0.05, 0.2, 1.0]
-    plt.figure(figsize=(8, 5))
-    for i in range(len(alphas)):
-        chances = np.exp(-alphas[i] * (distances - 1))
-        plt.plot(distances, chances, marker="o", markersize=3, color=GRAYS[i], label=f"alpha = {alphas[i]}")
-    plt.axhline(0.5, color="black", linestyle="--", label="a 50/50 chance")
-    plt.xlabel("Distance between the two bots (d)")
-    plt.ylabel("Chance of a ping")
-    plt.title("How alpha changes the type B detector")
-    plt.legend()
-    plt.grid()
-    save_chart("ping_chance.png")
 
 
 # draws a bar chart with two bars for each strategy at best_k and best_alpha, the average moves and half the
@@ -98,7 +80,6 @@ def main():
     type_a_free = pd.read_csv("results/type_a_free_moves.csv")
     type_b_free = pd.read_csv("results/type_b_free_moves.csv")
 
-    plot_ping_chance()
     cost = "Average cost (moves + 1/2 detector uses)"
     free_cost = "Average cost (1/2 detector uses, moving is free)"
     line_chart(type_a, ["baseline", "mine"], "k (the square is 2k + 1 by 2k + 1)", cost,
