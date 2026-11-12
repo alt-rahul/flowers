@@ -485,15 +485,42 @@ This works like the game 20 questions, where every reading splits the possible
 cells as close to half as it can.
 
 For type B, warmer or colder no longer makes sense, since its purpose is to
-take small steps instead of long walks. So I changed it to a fairest coin rule.
-A reading whose answer can already be guessed gives no information, like
-flipping a coin that is known to be double headed. So the LocatorBot runs the
-detector where the chance of a ping (the warmth) is closest to 0.5. However, a
-fair coin far away cannot tell apart cells that are right next to each other,
-and the only way to find the LostBot is to read in its cell. So every other
-reading, it checks the most likely cell instead, like the baseline. Since
-moving is free, it can also read in the same cell twice in a row if that is
-still the best spot.
+take small steps instead of long walks. So I changed it to a fairest coin rule,
+which works as follows.
+
+Every reading is like flipping a coin, where heads is a ping and tails is no
+ping. Where the LocatorBot stands decides how biased that coin is. The chance
+of heads from a spot is the warmth of that spot from Section 3, which is the
+chance of a ping from there, given what the LocatorBot currently believes about
+where the LostBot is. A coin whose result can already be predicted gives almost
+no information:
+
+- if the warmth at a spot is 0.95, the detector will almost surely ping, so a
+  ping tells us almost nothing new
+- if the warmth is 0.05, the detector will almost surely not ping, which has
+  the same problem
+- if the warmth is 0.5, there is no way to predict the answer, so either answer
+  changes the knowledge base a lot
+
+This is the same idea as the two coins example from class, where flipping a
+coin that is known to be double headed tells us nothing. So the LocatorBot runs
+the detector at the spot whose warmth is closest to 0.5, which is the fairest
+coin.
+
+On the ship, suppose the LostBot is probably somewhere in the left half.
+Standing in the middle of that area, the detector will almost surely ping, so
+the reading is not useful. Standing far to the right, it will almost surely not
+ping, so that reading is not useful either. Standing near the edge of that
+area, the answer is a toss-up. A ping means the LostBot is probably in the near
+part of the area, and a no ping means it is probably in the far part. So one
+reading splits the possible locations in two, like the binary search of my
+type A strategy.
+
+A fairest coin spot is usually not where the LostBot is, and the only way to
+finish the search is to run the detector in the cell of the LostBot. So every
+other reading, the LocatorBot checks the most likely cell instead, like the
+baseline. Since moving is free, it can also read in the same cell twice in a
+row if that is still the best spot.
 
 ![Figure 5](plots/free_moves_k.png)
 
@@ -513,8 +540,8 @@ still the best spot.
 | type B, alpha = 0.2 | 18.3 | 35.3 | 20.5 |
 | type B, alpha = 2 | 103.5 | 217.5 | 89.0 |
 
-For type A, the change makes a big difference. From k = 15 up, it needs about 11.7 readings,
-a cost of 5.9. This is close to perfect binary search, which would need
+For type A, the change makes a big difference. From k = 15 up, it needs about
+11.7 readings, a cost of 5.9. This is close to perfect binary search, which would need
 log base 2 of the roughly 1,600 open cells, about 10.7 readings. The best k
 also goes up. When walking is free, a bigger square is better since it can
 split the ship anywhere, so the cost keeps dropping until k = 15 and then
@@ -530,16 +557,20 @@ For type B, the fairest coin was only partly successful:
 - for alpha from 0.5 to 1, it costs about the same
 - for alpha of 1.5 and up, it costs 10% to 15% less
 
-The reason is where the fair coin is. The spot where the ping chance is 0.5 is
-about 1 + ln(2) / alpha cells away from where the LostBot probably is. At
-alpha = 0.01 that is 70 cells, so the LocatorBot reads from the far side of
-the ship. From that far away, all the likely cells are about the same distance,
-so the reading cannot tell them apart and gives little information. For big
-alpha, the fair coin is only 1 or 2 cells from the likely area, so one
-reading tests a small group of cells at once, which is better than checking one
-cell at a time like the baseline. My normal warmer or colder strategy costs 1.5
-to 2.2 times as much as the baseline here, because it reads on every step to
-save walking, and walking is now free.
+The reason is where the fairest coin is. The spot where the ping chance is 0.5
+is about 1 + ln(2) / alpha cells away from where the LostBot probably is.
+
+- For big alpha (1.5 and up), that spot is only 1 or 2 cells from the likely
+  area, so one reading splits a small group of nearby cells. This is better
+  than the baseline, which checks one cell at a time.
+- For small alpha, that spot is far away, about 70 cells at alpha = 0.01, so
+  the LocatorBot reads from the far side of the ship. From that far away, every
+  likely cell is about the same distance, so the reading cannot tell them apart
+  and gives little information.
+
+My normal warmer or colder strategy costs 1.5 to 2.2 times as much as the
+baseline here, because it reads on every step to save walking, and walking is
+now free.
 
 Type A is still the more efficient detector when both are tuned, by even more
 than before. Type A is best at k = 15 and up, where my free moves strategy
