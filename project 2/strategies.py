@@ -5,12 +5,12 @@ import numpy as np
 from detector import ping_chance_map
 from search import map_distance
 
-# this file has the 2 baselines and my 2 strategies. each one takes the knowledge base and the LocatorBot's
-# position and returns the cell to go to next. map_distance from project 1 gives dist[row][col], the number of
+# this file has the 2 baselines and my two of my strategies. each one takes the knowledge base and the locatbor's
+# location and returns the cell to move to next. map_distance from project 1 gives dist[row][col], the number of
 # moves from position to every cell
 
 
-# baseline type A, returns the closest cell that is still possible, ties are broken at random
+# baseline type A and returns the closest cell that is still possible, ties are supposed to be broken at random
 def baseline_a(ship, possible, position):
     dist = map_distance(ship, [position], set())
     nearest = math.inf
@@ -25,7 +25,7 @@ def baseline_a(ship, possible, position):
     return ties[np.random.randint(len(ties))]
 
 
-# baseline type B, returns the cell with the highest probability, ties are broken by the closest one and
+# baseline type B returns the cell with the highest probability, ties are broken by the closest cell and eventually
 # then at random
 def baseline_b(ship, prob, position):
     dist = map_distance(ship, [position], set())
@@ -41,7 +41,7 @@ def baseline_b(ship, prob, position):
         for col in range(ship.D):
             if prob[row][col] == biggest:
                 ties.append((row, col))
-    # if there's more than one, only keep the closest ones
+    # if  more than one, only keep the closest ones obviously
     if len(ties) > 1:
         closest = math.inf
         for row, col in ties:
@@ -55,9 +55,9 @@ def baseline_b(ship, prob, position):
     return ties[np.random.randint(len(ties))]
 
 
-# returns how many possible cells a reading at row, col is sure to remove whatever the answer is. a ping removes
-# the possible cells outside the square and a no ping removes the ones inside it, so it takes the smaller of the
-# two, plus 1 if row, col itself is still possible. total is the number of possible cells
+# returns how many possible cells a being read at each row, col will def remove whatever the answer is
+#  a ping removes the possible cells outside the square and a no ping removes the ones inside it so it takes the min of the two
+# two, plus 1 if row, col itself is still possible
 def sure_crossed_out(possible, row, col, k, total):
     here = 0
     if possible[row][col]:
@@ -71,8 +71,9 @@ def sure_crossed_out(possible, row, col, k, total):
     return here + min(inside, outside)
 
 
-# my type A strategy, returns the open cell with the best score, which is sure_crossed_out divided by the moves to
-# get there plus 1/2, ties go to the closest cell. when free_moves is True the score is not divided by the cost
+# my type A strategy, returns the open cell with the best score, which is the cell crossed out divided by the moves to
+# get there plus 1/2 (for using the detection), like other strats ties go to the closest possible cell. 
+# when free moves is true the score is not divided by the cost 
 def my_a(ship, possible, position, k, free_moves):
     dist = map_distance(ship, [position], set())
     total = 0   # how many cells are still possible
@@ -92,16 +93,16 @@ def my_a(ship, possible, position, k, free_moves):
     return best
 
 
-# returns the warmth of cell, the chance that a reading there pings. every cell's probability is multiplied by its
-# ping chance from cell and added up, and cell itself counts as 1 since a reading there would find the LostBot
+# returns the warmth of cell the chance that a detection there pings every cell's probability is multiplied by its
+# ping probability from cell and added up, and cell itself counts as 1 since a detection there would find the lostbot
 def warmth(prob, cell, alpha):
     chance = ping_chance_map(len(prob), cell, alpha)
     chance[cell[0]][cell[1]] = 1
-    return (prob * chance).sum()   # every cell's probability times its ping chance, all added up
+    return (prob * chance).sum()   # every cells prob times its ping prob, all added up
 
 
-# my type B strategy, returns the warmest cell next to position if it is warmer than position, otherwise it
-# returns the most likely cell from baseline_b
+# my type B strategy returns the warmest cell next to the position if it is warmer than current position, otherwise it
+# returns the most likely cell from repurposed from the baseline strategy b
 def my_b(ship, prob, position, alpha):
     best = None
     best_warmth = warmth(prob, position, alpha)
@@ -115,15 +116,15 @@ def my_b(ship, prob, position, alpha):
     return best
 
 
-# my type B strategy when moving is free. when readings, the number of detector uses so far, is even it returns
-# the most likely cell from baseline_b, otherwise it returns the open cell whose warmth is closest to 0.5
+# my type B strategy when moving is free and has no cost when detections the number of detector uses is large, is even it returns
+# the most likely cell from previous baseline b otherwise it returns the open cell whose warmth is closest to half
 def fairest_coin(ship, prob, position, alpha, readings):
     if readings % 2 == 0:
         return baseline_b(ship, prob, position)
     best = None
     best_gap = 1
     for cell in ship.open_cells():
-        difference = abs(warmth(prob, cell, alpha) - 0.5)   # how far its warmth is from 0.5
+        difference = abs(warmth(prob, cell, alpha) - 0.5)   # how far its warmth is from half
         if difference < best_gap:
             best = cell
             best_gap = difference

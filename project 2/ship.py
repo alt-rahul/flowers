@@ -4,19 +4,19 @@ import numpy as np
 
 # this file is mostly the same as the ship.py from project 1, the ship is still built the exact same way
 # so with the same seed you get the exact same ship as in project 1. the only difference is that there is no
-# fire or button anymore, instead a tile can hold the LocatorBot (our bot) or the LostBot (the bot we're looking for)
+# fire or button anymore, instead a tile can hold the locatorbot  or the lostbot 
 
 # This is the class tile, basically each cell is actually a "tile" where it it has the ability to
-# have either the LocatorBot or the LostBot. The ship is made of 2d array of tiles where the LocatorBot
+# have either the locatorbot or the lostbot. The ship is made of 2d array of tiles where the locatorbot
 # can move through.
 
 class Tile:
     def __init__(self):
-        #attributes of each tile object, has the ability to store the LocatorBot and the LostBot, initially all cells start
+        #attributes of each tile object, has the ability to store the locatorbot and the lostbot, initially all cells start
         #as being blocked
         self.is_open = False
-        self.has_bot = False        # the LocatorBot
-        self.has_lost_bot = False   # the LostBot, it never moves
+        self.has_bot = False        # the locatorbot
+        self.has_lost_bot = False   # the lostbot, it never moves
         self.neighbors = []   # positions of the open tiles next to this one
 
 
@@ -56,7 +56,7 @@ class Ship:
         return self.tile(position).neighbors
    
     #goes through each cell, if it's open or not, if it it's added to the list with the position
-    # this is used later in the program to get a random open cell for the LocatorBot and the LostBot
+    # this is used later in the program to get a random open cell for the locatorbot and the lostbot
     # this is not a set because this list of cells will later be shuffled to random pick which cells will get those 2 bots
     def open_cells(self):
         cells = []

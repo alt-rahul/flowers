@@ -4,25 +4,24 @@ import pandas as pd
 
 from simulation import run_search, setup_trial
 
-# this file runs every strategy on TRIALS ships and saves the results as csv files in the results folder. Pool
-# runs one trial on each core at the same time. trial i uses seed i for the ship and starting cells, and seed
-# SEED + i for the random numbers during its searches
+# this file runs every strategy on teh trails ships and saves the results as csv files in the results folder. the pool 
+# runs each trial on each core at the same time to speed up the process same trial uses the same seeds to keep it consistent
+# seed increase by i for the searches
 
-D = 50          # the ship is 50 by 50, the same size as project 1
-TRIALS = 200    # how many ships, every strategy is run once on each ship at each k or alpha
-SEED = 67       # added to the trial number to get the seed for the searches
+D = 50          
+TRIALS = 200    
+SEED = 67      
 
-# the values of k and alpha that get tested
+# testing values of k and alpha
 K_VALUES = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25]
 ALPHA_VALUES = [0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
 
-# the columns of the results file, each row is one search
 COLUMNS = ["detector", "setting", "trial", "strategy", "free_moves", "found", "moves", "readings", "cost", "ms"]
 
 
-# builds the ship for one trial and runs the baseline and mine on it at every k and alpha, and mine again with
-# free_moves. the baseline does not need a free moves run since it never looks at the cost. returns one row for
-# each search in the same order as COLUMNS
+# builds the ship for one trial then runs the baseline and our strategy on the k and alpha values and my strategy again 
+# but next with no cost for the moves. the baseline doesn't even need a free moves parameter since it never looks at the cost at the first place
+# returns one row for each search in the same order as the columns
 def run_trial(trial):
     ship, bot_start, lost = setup_trial(D, trial)
     rows = []
@@ -35,8 +34,8 @@ def run_trial(trial):
     return rows
 
 
-# returns the average of one column over every row with this detector, setting, strategy and free_moves. rows is
-# a list of searches, each one in the same order as COLUMNS
+# returns the average of one column over every row with this detector, this includes variables strategy and free moves.
+# rows is just a a list of searches, they are all in the same order as the columns
 def average(rows, detector, setting, strategy, free_moves, column):
     column_index = COLUMNS.index(column)
     total = 0
@@ -48,9 +47,9 @@ def average(rows, detector, setting, strategy, free_moves, column):
     return total / count
 
 
-# returns a table with one row for each k or alpha, with the average cost of the baseline and mine and how much
-# cheaper mine is in percent. when free_moves is True every cost is 1/2 * readings, and my free moves strategy
-# gets its own column
+# returns a table with one row for each value k or alpha, with the average cost of the baseline and my strartegy and how much
+# less expensive mine is in a percentage format. when the free_moves variabel is true every cost about half the moves
+# and the free moves gets its own column as well
 def cost_table(rows, detector, free_moves):
     settings = K_VALUES
     name = "k"
@@ -93,6 +92,5 @@ def main():
     print("Finished!")
 
 
-# Pool needs this, otherwise every core would run main() again
 if __name__ == "__main__":
     main()
