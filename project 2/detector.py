@@ -2,32 +2,30 @@ import math
 
 import numpy as np
 
-# this file has everything about the two bot detectors, when they ping and how the LocatorBot updates
-# what it knows, its knowledge base, after it runs a detector. the knowledge bases are D by D numpy arrays
-# this time instead of lists since in project 1 I said I would try this, you still get a cell with [row][col]
+# this file has the two detectors and the functions that update the knowledge base after a reading.
+# both knowledge bases are D by D numpy arrays, and a cell is still reached with [row][col] like a list
 
 
-# the type A detector pings if the LostBot is inside the (2k+1) by (2k+1) square centered on the LocatorBot,
-# which is the same thing as saying the LostBot's row and column are both at most k away from ours
+# returns True if the LostBot's row and column are both at most k away from the LocatorBot's,
+# which means it is inside the 2k + 1 by 2k + 1 square around the LocatorBot
 def type_a_ping(bot_position, lost_position, k):
     return abs(bot_position[0] - lost_position[0]) <= k and abs(bot_position[1] - lost_position[1]) <= k
 
 
-# the chance that the type B detector pings, e^(-alpha * (d - 1)) where d is the euclidean distance between
-# the two bots. a LostBot right next to us (d = 1) always pings, and the further away it is the less likely
+# returns the chance of a type B ping, e ** (-alpha * (distance - 1)), where distance is the euclidean
+# distance between the two bots
 def ping_chance(bot_position, lost_position, alpha):
     distance = math.dist(bot_position, lost_position)
     return math.exp(-alpha * (distance - 1))
 
 
-# the type B detector actually flips a coin with that chance to decide if it pings or not
+# returns True with that chance, by checking if a random number between 0 and 1 is below it
 def type_b_ping(bot_position, lost_position, alpha):
     return np.random.random() < ping_chance(bot_position, lost_position, alpha)
 
 
-# a D by D array with the chance that the type B detector pings for a LostBot in each cell, if the LocatorBot
-# is at position. the two for loops find the distance to every cell, then np.exp does e^(-alpha * (d - 1)) on every
-# cell at once
+# returns a D by D array with the type B ping chance for every cell if the LocatorBot is at position.
+# the two for loops fill in the distance to every cell, then np.exp turns every distance into a chance at once
 def ping_chance_map(D, position, alpha):
     distance = np.zeros((D, D))
     for row in range(D):
@@ -36,12 +34,11 @@ def ping_chance_map(D, position, alpha):
     return np.exp(-alpha * (distance - 1))
 
 
-# the type A knowledge base is a True or False array of every cell the LostBot could still be in, it starts as
-# every open cell. after a reading we go through every cell and ask, if the LostBot was here would the
-# detector have said what it just said? if not, it can't be there, so it gets crossed out
+# returns a new copy of possible, the True or False array of cells the LostBot could still be in. the cell at
+# position is set to False, then every cell where type_a_ping would not give the same answer as ping is set to False
 def update_type_a(possible, position, ping, k):
     possible = possible.copy()
-    possible[position[0]][position[1]] = False   # it didn't say found, so the LostBot isn't where we're standing
+    possible[position[0]][position[1]] = False   # the detector did not say found here
     for row in range(len(possible)):
         for col in range(len(possible)):
             if type_a_ping(position, (row, col), k) != ping:
@@ -49,12 +46,9 @@ def update_type_a(possible, position, ping, k):
     return possible
 
 
-# the type B knowledge base is the probability that the LostBot is in each cell, it starts the same for every
-# open cell. after a reading we use bayes' rule like the two coins example from class, the new chance of a cell
-# is its old chance times the chance of getting that reading if the LostBot was there, divided by the total of
-# that over every cell so it all adds up to 1 again. the chance of the reading is the ping chance for a ping,
-# and 1 minus the ping chance for no ping. the cell we're standing on goes to 0 first since the detector would
-# have said found if it was there
+# returns a new copy of prob, the probability of the LostBot being in each cell. the cell at position is set to 0,
+# every cell is multiplied by its ping chance for a ping or by 1 minus its ping chance for no ping, and then
+# every cell is divided by the total so they add up to 1
 def update_type_b(prob, position, ping, alpha):
     prob = prob.copy()
     prob[position[0]][position[1]] = 0

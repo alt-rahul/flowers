@@ -1,33 +1,31 @@
 import matplotlib
-matplotlib.use("Agg")   # saves the charts as files instead of opening a window for each one
+matplotlib.use("Agg")   # saves the charts as files instead of opening a window
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 from experiments import average
 
-# this file draws the charts that are used in the writeup from the tables that experiments.py saved,
-# run this after you run experiments and the charts get saved in the plots folder
+# this file reads the csv files from experiments.py and saves the charts in the plots folder
 
-# the same colors as project 1, my strategies are purple like bot 4 was, the baseline is blue
+# the color of each line, my strategies are purple like bot 4 in project 1 and the baseline is blue
 COLORS = {"baseline": "#2a78d6", "mine (normal)": "#4a3aa7", "mine": "#4a3aa7", "mine (free moves)": "#1baf7a"}
 GRAYS = ["#9a9a9a", "#5c5c5c", "#1e1e1e"]
 
 
+# saves the current chart in the plots folder and closes it
 def save_chart(name):
     plt.savefig("plots/" + name, dpi=120, bbox_inches="tight")
     plt.close()
 
 
-# draws one line for every strategy in the table, with k or alpha along the bottom and the average cost going up,
-# ylabel says what the cost is since when moving is free only the detector counts.
-# for alpha the x axis is on a log scale since the values go from 0.01 to 3, and log_y does the same for the cost
-# when the baseline costs are way bigger than mine
+# draws one line for each strategy in the table, with the first column, k or alpha, along the bottom and the
+# average cost going up. log_x and log_y put that axis on a log scale
 def line_chart(table, strategies, xlabel, ylabel, title, filename, log_x=False, log_y=False):
     setting_column = table.columns[0]   # k or alpha
     plt.figure(figsize=(8, 5))
     for strategy in strategies:
-        # my free moves line is dashed so it's easy to tell apart from my normal strategy
+        # the free moves line is dashed
         style = "--" if strategy == "mine (free moves)" else "-"
         plt.plot(table[setting_column], table[strategy], style, marker="o", markersize=4, color=COLORS[strategy], label=strategy)
     if log_x:
@@ -42,8 +40,7 @@ def line_chart(table, strategies, xlabel, ylabel, title, filename, log_x=False, 
     save_chart(filename)
 
 
-# shows how alpha changes the type B detector, the chance of a ping based on how far away the LostBot is,
-# for a small, a medium and a big alpha. the dashed line is a chance of 0.5
+# draws the type B ping chance against distance for three values of alpha, with a dashed line at 0.5
 def plot_ping_chance():
     distances = np.arange(1, 31)
     alphas = [0.05, 0.2, 1.0]
@@ -60,9 +57,8 @@ def plot_ping_chance():
     save_chart("ping_chance.png")
 
 
-# a bar chart of where the cost goes, moves or detector uses, for each strategy at the k and alpha where my
-# strategies did best. for each strategy there are two bars next to each other, the cost of moving and the
-# cost of running the detector
+# draws a bar chart with two bars for each strategy at best_k and best_alpha, the average moves and half the
+# average readings
 def plot_cost_breakdown(results, best_k, best_alpha):
     labels = []
     move_costs = []
@@ -83,7 +79,7 @@ def plot_cost_breakdown(results, best_k, best_alpha):
     save_chart("cost_breakdown.png")
 
 
-# the k or alpha in the first column of the table where my strategy had the lowest average cost
+# returns the k or alpha in the first column of the table where the mine column is the lowest
 def lowest_setting(table):
     settings = list(table[table.columns[0]])
     costs = list(table["mine"])
@@ -94,7 +90,7 @@ def lowest_setting(table):
     return settings[best]
 
 
-# reads the tables and draws every chart
+# reads the results and draws every chart
 def main():
     results = pd.read_csv("results/main.csv").values.tolist()   # every search as a list, like in experiments.py
     type_a = pd.read_csv("results/type_a_cost.csv")

@@ -7,12 +7,11 @@ from detector import type_a_ping, type_b_ping, update_type_a, update_type_b
 from search import bfs
 from ship import generate_ship
 
-MAX_ACTIONS = 100000   # a safety limit so a run can never loop forever (no run ever gets close to this)
+MAX_ACTIONS = 100000   # a safety limit on moves plus readings so a search can never loop forever
 
 
-# this sets up a trial the same way as in project 1, the ship is built with the trial's seed, then the open
-# cells are shuffled and the first one gets the LocatorBot and the second one gets the LostBot.
-# so trial i is always the same ship with the same two starting cells
+# builds the ship with the trial's seed, shuffles the open cells, and returns the ship, the first cell for the
+# LocatorBot and the second cell for the LostBot, so the same seed always gives the same ship and starting cells
 def setup_trial(D, seed):
     ship = generate_ship(D, seed)
     cells = ship.open_cells()
@@ -22,8 +21,7 @@ def setup_trial(D, seed):
     return ship, bot_start, lost
 
 
-# a D by D True or False array with True for every open cell, this is the starting knowledge base, at the
-# start the LostBot could be in any open cell
+# returns a D by D True or False array that is True for every open cell, this is the starting knowledge base
 def open_mask(ship):
     mask = np.zeros((ship.D, ship.D), dtype=bool)
     for row, col in ship.open_cells():
@@ -31,15 +29,12 @@ def open_mask(ship):
     return mask
 
 
-# this runs one search from start to finish. detector is A or B, setting is k for type A or alpha for
-# type B, and strategy is baseline or mine. free_moves is for question 6 where only the detector costs
-# anything. the seed is for the random numbers for type B pings and breaking ties, so the same run can be done
-# again exactly the same way. every loop the LocatorBot does 3 things
-# 1. runs the detector where it is, once, every strategy does this
-# 2. updates its knowledge base with the reading
-# 3. picks where to go next and walks there with BFS
-# it stops as soon as it runs the detector in the LostBot's cell. it returns how many moves and detector
-# uses it took, the total cost which is moves + 1/2 * detector uses, and how long it took to run
+# runs one search and returns found, moves, readings, cost and the time in ms. detector is A or B, setting is k or
+# alpha, strategy is baseline or mine, and seed sets the random numbers. the cost is moves + 1/2 * readings, or
+# only 1/2 * readings when free_moves is True. every loop does 3 things
+# 1. runs the detector where the LocatorBot is, and stops if it is in the LostBot's cell
+# 2. updates the knowledge base with the reading
+# 3. gets the next cell from pick_target and walks there with BFS
 def run_search(ship, bot_start, lost, detector, setting, strategy, seed, free_moves=False):
     np.random.seed(seed)
     start_time = time.perf_counter()
@@ -47,7 +42,7 @@ def run_search(ship, bot_start, lost, detector, setting, strategy, seed, free_mo
     ship.tile(bot_start).has_bot = True
     ship.tile(lost).has_lost_bot = True
 
-    # the knowledge base is True or False for every cell for type A, and a probability for every cell for type B
+    # True or False for every cell for type A, a probability for every cell for type B
     knowledge = open_mask(ship)
     if detector == "B":
         knowledge = knowledge / knowledge.sum()
@@ -91,7 +86,7 @@ def run_search(ship, bot_start, lost, detector, setting, strategy, seed, free_mo
     }
 
 
-# which strategy picks the next cell to go to
+# calls the strategy that matches detector, strategy and free_moves, and returns the cell it picks
 def pick_target(ship, knowledge, position, detector, setting, strategy, readings, free_moves):
     if detector == "A" and strategy == "baseline":
         return strategies.baseline_a(ship, knowledge, position)

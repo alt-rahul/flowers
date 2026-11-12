@@ -4,18 +4,15 @@ import pandas as pd
 
 from simulation import run_search, setup_trial
 
-# this file runs every strategy on thousands of searches and saves the results as csv files in the results folder.
-# in project 1 I said I wanted to learn parallelization to make the experiments faster, so this time I used
-# Pool from multiprocessing, it runs one trial on each core of the computer at the same time, so with 4 cores
-# it's about 4 times faster. every trial is completely separate from the others so they can run in any order.
-# trial number i always uses seed i for the ship and the two starting cells (the same as project 1), and seed
-# SEED + i for the random numbers during the search, so any search can be made again exactly the same way
+# this file runs every strategy on TRIALS ships and saves the results as csv files in the results folder. Pool
+# runs one trial on each core at the same time. trial i uses seed i for the ship and starting cells, and seed
+# SEED + i for the random numbers during its searches
 
 D = 50          # the ship is 50 by 50, the same size as project 1
-TRIALS = 200    # how many searches for each strategy at each k or alpha
-SEED = 67       # added to the trial number to get the seed for the random numbers during a search
+TRIALS = 200    # how many ships, every strategy is run once on each ship at each k or alpha
+SEED = 67       # added to the trial number to get the seed for the searches
 
-# the values of k and alpha that get tested (the writeup explains how I picked these ranges)
+# the values of k and alpha that get tested
 K_VALUES = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25]
 ALPHA_VALUES = [0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
 
@@ -23,11 +20,9 @@ ALPHA_VALUES = [0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
 COLUMNS = ["detector", "setting", "trial", "strategy", "free_moves", "found", "moves", "readings", "cost", "ms"]
 
 
-# every search on one trial, the ship only gets built once since building it takes longer than most searches, and
-# then every strategy runs on it at every k and alpha. both strategies run with the normal costs, and my strategies
-# also run again with free moves for question 6. the baselines don't need a free moves run, they don't look at
-# the cost at all so they do the exact same thing either way, their free moves cost is just half their readings.
-# it returns one row for each search in the same order as COLUMNS
+# builds the ship for one trial and runs the baseline and mine on it at every k and alpha, and mine again with
+# free_moves. the baseline does not need a free moves run since it never looks at the cost. returns one row for
+# each search in the same order as COLUMNS
 def run_trial(trial):
     ship, bot_start, lost = setup_trial(D, trial)
     rows = []
@@ -40,8 +35,8 @@ def run_trial(trial):
     return rows
 
 
-# the average of one column like cost over every search with this detector, setting, strategy and
-# free_moves. rows is a list of searches, each one is a list in the same order as COLUMNS
+# returns the average of one column over every row with this detector, setting, strategy and free_moves. rows is
+# a list of searches, each one in the same order as COLUMNS
 def average(rows, detector, setting, strategy, free_moves, column):
     column_index = COLUMNS.index(column)
     total = 0
@@ -53,9 +48,9 @@ def average(rows, detector, setting, strategy, free_moves, column):
     return total / count
 
 
-# makes a table with one row for each k or alpha and the average cost of each strategy, plus how much
-# cheaper in percent my strategy is than the baseline. free moves is for the question 6 table, where the cost is
-# only the detector, 1/2 per reading, for everything including the baseline and my normal strategy
+# returns a table with one row for each k or alpha, with the average cost of the baseline and mine and how much
+# cheaper mine is in percent. when free_moves is True every cost is 1/2 * readings, and my free moves strategy
+# gets its own column
 def cost_table(rows, detector, free_moves):
     settings = K_VALUES
     name = "k"
@@ -80,7 +75,7 @@ def cost_table(rows, detector, free_moves):
     return pd.DataFrame(table, columns=[name, "baseline", "mine (normal)", "mine (free moves)", "% cheaper"])
 
 
-# runs every trial, one trial on each core at a time, then saves every row and the four tables
+# runs every trial with Pool, then saves every search to main.csv and the four cost tables
 def main():
     print(f"Running {TRIALS} trials")
     with Pool() as pool:
@@ -98,6 +93,6 @@ def main():
     print("Finished!")
 
 
-# the if __name__ part is needed for Pool, otherwise every core would start running main() again
+# Pool needs this, otherwise every core would run main() again
 if __name__ == "__main__":
     main()
